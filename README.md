@@ -195,6 +195,8 @@ python quick_test.py
 
 ### Run DQN training
 
+Training currently does not expose CLI flags. It uses the values stored in [`hcr_dqn/configs.py`](./hcr_dqn/configs.py), so edit `DQNConfig` there when you want to change the run name, seed, agent variant, reward settings, or other hyperparameters.
+
 ```bash
 python hcr_dqn/train_dqn.py
 ```
@@ -202,14 +204,157 @@ python hcr_dqn/train_dqn.py
 ### Evaluate a saved checkpoint
 
 ```bash
-python hcr_dqn/run_evaluation.py
+python -m hcr_dqn.run_evaluation --run-name momentum_sensitive_dqn_seed7
 ```
 
 ### Watch a checkpoint
 
 ```bash
-python hcr_dqn/watch_checkpoint.py
+python -m hcr_dqn.watch_checkpoint --run-name momentum_sensitive_dqn_seed7
 ```
+
+## Command-Line Interface
+
+The repository currently exposes CLI argument parsing for:
+
+- `python -m hcr_dqn.run_evaluation`
+- `python -m hcr_dqn.watch_checkpoint`
+
+The training entry point:
+
+- `python hcr_dqn/train_dqn.py`
+
+does not currently parse command-line arguments. It reads configuration directly from `DQNConfig` in [`hcr_dqn/configs.py`](./hcr_dqn/configs.py).
+
+### `run_evaluation`
+
+Use this command to evaluate a saved checkpoint and write summary CSV files.
+
+Example:
+
+```bash
+python -m hcr_dqn.run_evaluation --run-name momentum_sensitive_dqn_seed7
+```
+
+What it does:
+
+- loads the checkpoint for the requested run
+- evaluates the trained agent
+- prints aggregate metrics to the terminal
+- appends a summary CSV row
+- appends per-episode evaluation rows
+
+Default checkpoint path:
+
+```text
+runs/<run_name>/checkpoints/best_model.pt
+```
+
+Default output files:
+
+```text
+runs/<run_name>/logs/evaluation_summaries.csv
+runs/<run_name>/logs/evaluation_episode_details.csv
+```
+
+Supported arguments:
+
+- `--run-name <name>`
+  Run folder name under `runs/`. If omitted, the code falls back to `DQNConfig.run_name`.
+
+- `--checkpoint <path>`
+  Explicit path to a checkpoint file. Use this if you do not want the default `runs/<run_name>/checkpoints/best_model.pt` path.
+
+- `--mode {validation,final}`
+  Chooses the evaluation regime.
+  `validation` uses the smaller held-out validation setup.
+  `final` uses the larger final evaluation setup.
+  Default: `final`
+
+- `--episodes <int>`
+  Overrides the number of evaluation episodes. If omitted, the script uses the count configured for the chosen mode.
+
+- `--seed-start <int>`
+  Overrides the first seed used for final evaluation. The help text notes that this is ignored in validation mode.
+
+- `--output <path>`
+  Custom CSV path for the summary file.
+
+Useful examples:
+
+```bash
+python -m hcr_dqn.run_evaluation --run-name momentum_sensitive_dqn_seed7 --mode validation
+python -m hcr_dqn.run_evaluation --run-name momentum_sensitive_dqn_seed7 --episodes 10
+python -m hcr_dqn.run_evaluation --checkpoint runs/momentum_sensitive_dqn_seed7/checkpoints/best_model.pt
+python -m hcr_dqn.run_evaluation --run-name momentum_sensitive_dqn_seed7 --output runs/momentum_sensitive_dqn_seed7/logs/final_eval_custom.csv
+```
+
+### `watch_checkpoint`
+
+Use this command to open a rendered window and watch a trained checkpoint play greedily.
+
+Example:
+
+```bash
+python -m hcr_dqn.watch_checkpoint --run-name momentum_sensitive_dqn_seed7
+```
+
+Default checkpoint path:
+
+```text
+runs/<run_name>/checkpoints/best_model.pt
+```
+
+Supported arguments:
+
+- `--run-name <name>`
+  Run folder name under `runs/`. If omitted, the script falls back to `DQNConfig.run_name`.
+
+- `--checkpoint <path>`
+  Explicit checkpoint file path.
+
+- `--episodes <int>`
+  Number of rendered episodes to watch.
+  Default: `3`
+
+- `--seed <int>`
+  Base seed for the rendered episodes. If omitted, the script uses `DQNConfig.seed`.
+
+- `--step-delay <float>`
+  Extra seconds to sleep after each environment step so playback is easier to watch.
+  Default: `0.02`
+
+Useful examples:
+
+```bash
+python -m hcr_dqn.watch_checkpoint --run-name momentum_sensitive_dqn_seed7 --episodes 1
+python -m hcr_dqn.watch_checkpoint --run-name momentum_sensitive_dqn_seed7 --seed 2026
+python -m hcr_dqn.watch_checkpoint --run-name momentum_sensitive_dqn_seed7 --step-delay 0.01
+python -m hcr_dqn.watch_checkpoint --checkpoint runs/momentum_sensitive_dqn_seed7/checkpoints/best_model.pt
+```
+
+### `train_dqn`
+
+Training currently works as a script entry point, not a parsed CLI.
+
+Run it with:
+
+```bash
+python hcr_dqn/train_dqn.py
+```
+
+To change behavior, edit the fields in [`hcr_dqn/configs.py`](./hcr_dqn/configs.py), especially:
+
+- `run_name`
+- `agent_variant`
+- `seed`
+- `reward_function`
+- `reward_type`
+- `action_space`
+- `num_episodes`
+- `evaluation_frequency`
+
+If you want fully scriptable experiment runs later, a natural next improvement would be to add an `argparse` interface to `train_dqn.py` so run names, seeds, and reward settings can be changed from the command line.
 
 ## Training Outputs
 
@@ -302,4 +447,3 @@ This README is an informational project summary and not legal advice. When in do
 
 - Upstream environment project: <https://github.com/alexzh3/hillclimbracing>
 - Inspiration game project by Code Bullet: <https://github.com/Code-Bullet/Hill-Climb-Racing-AI>
-
