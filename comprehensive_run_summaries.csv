@@ -1,0 +1,6 @@
+timestamp,run_name,checkpoint_path,evaluation_episodes,mean_return,mean_score,mean_length
+2026-05-28T23:04:31,vanilla_dqn_seed7,C:\Users\ADMIN\Documents\SPRING 2026\Artificial Intelligent\Hill Climb Racing AI\runs\vanilla_dqn_seed7\checkpoints\best_model.pt,5,984.6406,229.4,889.2
+2026-05-28T21:20:13,vanilla_dqn_seed42,C:\Users\ADMIN\Documents\SPRING 2026\Artificial Intelligent\Hill Climb Racing AI\runs\vanilla_dqn_seed42\checkpoints\best_model.pt,5,1202.4378,262.4,1075.2
+2026-05-26T16:45:05,vanilla_dqn_seed123,C:\Users\ADMIN\Documents\SPRING 2026\Artificial Intelligent\Hill Climb Racing AI\runs\vanilla_dqn_seed123\checkpoints\best_model.pt,5,1937.1245,452.0,2040.8
+2026-05-26T21:26:27,vanilla_dqn_seed999,C:\Users\ADMIN\Documents\SPRING 2026\Artificial Intelligent\Hill Climb Racing AI\runs\vanilla_dqn_seed999\checkpoints\best_model.pt,5,2527.9971,430.0,2196.2
+2026-05-29T00:02:16,vanilla_dqn_seed2026,C:\Users\ADMIN\Documents\SPRING 2026\Artificial Intelligent\Hill Climb Racing AI\runs\vanilla_dqn_seed2026\checkpoints\best_model.pt,5,1421.7522,435.0,1924.4
