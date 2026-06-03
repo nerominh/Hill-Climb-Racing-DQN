@@ -7,6 +7,10 @@ This file is both:
 
 Use it to track what changed, why it changed, what theory is being used, how to understand the code, how to run each phase, and what findings to write down after experiments.
 
+Use this together with `EXPERIMENT_RESULTS_TRACKER.md`:
+- `PROJECT_PHASE_TRACKER.md` is the guide for phases, theory, code understanding, and execution workflow
+- `EXPERIMENT_RESULTS_TRACKER.md` is the source of truth for actual run results, experiment tables, behavior notes, and final report numbers
+
 ---
 
 ## 1. Project Overview
@@ -25,6 +29,7 @@ Use it to track what changed, why it changed, what theory is being used, how to 
 | `hcr_dqn/` | Your RL code |
 | `HCR_DQN_Project_Plan.md` | Main project plan |
 | `PROJECT_PHASE_TRACKER.md` | This file, which tracks progress and explains what to do next |
+| `EXPERIMENT_RESULTS_TRACKER.md` | Main record for experiment outputs and report-ready results |
 | `quick_test.py` | Simple environment smoke test |
 | `runs/` | Output folder created by training runs |
 
@@ -36,6 +41,69 @@ That separation is important because it helps you explain in your report what wa
 
 ---
 
+## Important: Model Evaluation Protocol
+
+Use this section as the official evaluation rule for the whole project.
+
+### Two different evaluation jobs
+
+| Evaluation type | Purpose | When it is used | Seed set | Exploration | Main output |
+|---|---|---|---|---|---|
+| Validation evaluation | Pick the best checkpoint during training | Inside `train_dqn.py` | `1000` to `1004` | Off | Mean return, mean score, mean length |
+| Final evaluation | Report final model performance | Inside `run_evaluation.py` | `10000` to `10029` by default | Off | Mean, standard deviation, and per-episode results |
+
+### What this means in practice
+
+- Training does not choose the best checkpoint on the same seed block used for final reporting.
+- Final evaluation uses a held-out terrain set that starts at seed `10000`.
+- The final evaluation seed block is fixed on purpose so every model is judged on the same terrains.
+- `config.seed` is still important for training reproducibility, but it does not control the default final evaluation seeds.
+
+### Official reporting rule
+
+When you compare models in your report:
+
+- train each model with its own training seed, such as `7`, `42`, or `123`
+- select the best checkpoint using the validation evaluation only
+- report final performance using the held-out final evaluation only
+- keep the same final evaluation setup for every model so the comparison is fair
+
+### Default final evaluation command
+
+```powershell
+python -m hcr_dqn.run_evaluation --run-name vanilla_dqn_seed42
+```
+
+What this does by default:
+
+- loads the checkpoint from `runs/vanilla_dqn_seed42/checkpoints/best_model.pt`
+- evaluates 30 held-out episodes
+- uses seeds `10000` to `10029`
+- turns exploration off
+- prints mean and standard deviation for return, score, and episode length
+- saves both summary and per-episode CSV files
+
+### Where final evaluation results are saved
+
+- `runs/<run_name>/logs/evaluation_summaries.csv`
+- `runs/<run_name>/logs/evaluation_episode_details.csv`
+- after each completed run, copy the important numbers into `EXPERIMENT_RESULTS_TRACKER.md`
+
+### Recommendation for final report tables
+
+For each trained model, report at least:
+
+- model name
+- training seed
+- final mean score
+- final score standard deviation
+- final mean return
+- final return standard deviation
+- final mean episode length
+- final length standard deviation
+
+---
+
 ## 2. How To Use This File
 
 For every phase:
@@ -44,9 +112,14 @@ For every phase:
 2. Follow the step-by-step task list
 3. Use the code walkthrough to understand the files involved
 4. Run the commands listed for that phase
-5. Fill in the findings table after you actually run experiments
+5. Record actual experiment outputs in `EXPERIMENT_RESULTS_TRACKER.md`
+6. Come back here only to update phase status, decisions, and high-level lessons
 
-If a run fails, still record it here. Failed runs are useful evidence.
+Division of responsibility:
+- put code explanations, setup steps, and phase progress in `PROJECT_PHASE_TRACKER.md`
+- put quantitative results, qualitative run observations, and seed-by-seed evidence in `EXPERIMENT_RESULTS_TRACKER.md`
+
+If a run fails, still record the failed run in `EXPERIMENT_RESULTS_TRACKER.md`. Failed runs are useful evidence.
 
 ---
 
@@ -138,6 +211,43 @@ into:
 ```
 
 This gives the network a fixed numeric input size of `7`.
+
+### 3.9 Fundamental bottleneck discovered after the first DQN experiments
+- Function approximation means the learned Q-values are imperfect, especially early in training
+- Some actions will be underestimated, while others will be overestimated
+- In standard Q-learning and standard DQN, the Bellman target still uses a max over estimated next-state action values
+- That max operation uses the same set of estimates both to choose the next action and to trust the value of that chosen action
+- As a result, the action with the largest positive estimation error is more likely to be selected
+- This creates overestimation bias, because the algorithm effectively says:
+- "I think this action is the best, and I will also trust the same optimistic estimate as its target value"
+
+Why this matters in this project:
+- the Hill Climb Racing environment has unstable physics, fast state changes, and failure-prone terrain transitions
+- the `momentum_sensitive_dqn` reward shaping can change which behaviors are favored, but it does not remove this core DQN target bias
+- that means a reward-shaping variant can still inherit the same mathematical bottleneck as vanilla DQN
+
+### 3.10 Why DoubleDQN is the next algorithm to try
+- DoubleDQN keeps the DQN idea but decouples action selection from action evaluation
+- Selection uses the online network:
+
+```text
+argmax_a Q_online(s', a)
+```
+
+- Evaluation uses the target network on that selected action:
+
+```text
+Q_target(s', argmax_a Q_online(s', a))
+```
+
+- Because the online and target networks have different weights, they are less likely to share the exact same localized overestimation error
+- This reduces overoptimistic targets and usually leads to more stable learning than standard DQN
+
+Why this is the right next step for this repository:
+1. First test `vanilla_dqn` to establish the baseline.
+2. Then test `momentum_sensitive_dqn` to see what reward shaping changes while the core DQN update stays the same.
+3. After that, address the deeper algorithmic bottleneck directly by testing `double_dqn`.
+4. Only after plain `double_dqn` is understood should a new DoubleDQN-based variation be designed and tested.
 
 ---
 
@@ -316,7 +426,7 @@ What to understand:
 - evaluation runs periodically
 - the best checkpoint is saved
 
-### Step 8. Understand evaluation
+### Step 8. Understand evaluation (Important)
 - Read `hcr_dqn/evaluate_dqn.py`
 - Read `hcr_dqn/run_evaluation.py`
 
@@ -843,7 +953,11 @@ Possible warning signs:
 
 ## 8. What You Should Record After A Run
 
-Fill this in after each real experiment.
+Use this section as a checklist, then write the actual evidence in `EXPERIMENT_RESULTS_TRACKER.md`.
+
+Do not maintain duplicate experiment tables in both files.
+- `PROJECT_PHASE_TRACKER.md` should only keep the workflow and high-level decisions
+- `EXPERIMENT_RESULTS_TRACKER.md` should hold the real run history and final report numbers
 
 ### Run information
 - Date:
@@ -882,6 +996,11 @@ Fill this in after each real experiment.
 - Try longer training
 - Move to Phase 2 experiments
 
+After filling this checklist, update:
+- the appropriate experiment row in `EXPERIMENT_RESULTS_TRACKER.md`
+- the per-run table for that method
+- the aggregate summary table if the seed set is complete
+
 ---
 
 # Phase 2
@@ -912,75 +1031,65 @@ Fill this in after each real experiment.
 
 ## Findings
 
-### Baseline run details
-- Date: 2026-05-26
-- Run name: `phase1_baseline`
-- Seed(s): `42` for the baseline config
-- Episode count: 300 in the current default config
-- Max episode steps: 3000
+Use `EXPERIMENT_RESULTS_TRACKER.md` as the source of truth for:
+- baseline quantitative results
+- per-seed run history
+- aggregate metrics
+- visual behavior notes
 
-### Baseline results
-- Mean training return: See `training_metrics.csv`
-- Mean evaluation return: 2816.031
-- Mean evaluation score: 555.600
-- Mean evaluation length: 2374.600
-- Best checkpoint: `runs/phase1_baseline/checkpoints/best_model.pt`
+Keep only high-level conclusions here.
 
-### Behavioral observations
-- What the agent seemed to learn first: Likely basic survival and staying upright for longer stretches
-- Common failure pattern: Not confirmed visually yet; current metrics suggest possible cautious or inefficient driving
-- Whether score improved over random baseline: Not verified yet because no direct random-policy comparison was recorded
-- Additional interpretation: The current checkpoint appears more stable than naive behavior, but the score is not high enough yet to conclude strong driving performance
-- Additional interpretation: The combination of long episode length and only moderate score suggests the policy may be optimizing survival more than efficient forward progress
-
-### Questions raised
-- Question 1: Does the visual behavior match the "survives but drives conservatively" hypothesis?
-- Question 2: Are the evaluation averages stable across 20 to 30 episodes, or are they inflated by a few good runs?
-- Question 3: Which single hyperparameter change most improves score without sacrificing stability?
+### Phase 2 conclusion summary
+- Baseline quantitative details: see `EXPERIMENT_RESULTS_TRACKER.md`
+- Best checkpoint path: `runs/phase1_baseline/checkpoints/best_model.pt`
+- Main lesson from this phase:
+- Main question to carry into the next phase:
 
 ---
 
 # Phase 3
 
 ## Phase goal
-- Add comparison variants such as Double DQN and Dueling DQN
+- Move from reward-level variations to an algorithm-level fix for DQN overestimation
+- Establish a clean `double_dqn` baseline before designing any new DoubleDQN-based variation
 
 ## Status
 - Not started yet
 
 ## Step-by-step plan
 
-1. Freeze a working vanilla DQN baseline
-2. Create one variant at a time
-3. Keep the rest of the pipeline unchanged
-4. Compare each variant against the same baseline settings
-5. Record multi-run evidence before drawing conclusions
+1. Freeze the current `vanilla_dqn` and `momentum_sensitive_dqn` baselines
+2. Implement plain `double_dqn` with the same environment, network size, replay setup, and evaluation protocol
+3. Compare `double_dqn` against the two existing DQN-based methods to isolate the effect of the new target rule
+4. Check whether reducing overestimation improves stability, final score, and seed-to-seed reliability
+5. Only after that, decide on a new DoubleDQN-based variation and test it separately
+6. Record multi-run evidence before drawing conclusions
 
 ## Files likely to change
 
 | File | Likely reason |
 |---|---|
-| `hcr_dqn/dqn_agent.py` | Double DQN or other update-rule variants |
-| `hcr_dqn/q_network.py` | Dueling network architecture |
-| `hcr_dqn/configs.py` | Variant-specific settings |
+| `hcr_dqn/dqn_agent.py` | Replace the standard DQN target with the DoubleDQN selection/evaluation split |
+| `hcr_dqn/configs.py` | Add a clean `double_dqn` experiment configuration and later a DoubleDQN-based variation config |
 | `hcr_dqn/train_dqn.py` | Logging extra comparison metadata |
 
 ## Findings
 
-### Variant list
-- Variant 1:
-- Variant 2:
-- Variant 3:
+Record the actual comparison results in `EXPERIMENT_RESULTS_TRACKER.md`.
 
-### Results summary
-- Which variant trained fastest:
-- Which variant reached the best score:
-- Which variant was most stable:
+Keep only the high-level takeaways here:
 
-### Interpretation
-- Why one variant may have helped:
-- Why one variant may have failed:
-- What should be tested next:
+### Planned comparison flow
+- Step 1: `vanilla_dqn`
+- Step 2: `momentum_sensitive_dqn`
+- Step 3: `double_dqn`
+- Step 4: `double_dqn_<tbd_variation>`
+
+### Phase 3 conclusion summary
+- Best-performing variant according to `EXPERIMENT_RESULTS_TRACKER.md`:
+- Most stable variant according to `EXPERIMENT_RESULTS_TRACKER.md`:
+- Main interpretation:
+- What should be tested next after plain `double_dqn`:
 
 ---
 
@@ -1003,25 +1112,17 @@ Fill this in after each real experiment.
 
 ## Findings
 
-### Experiment matrix
+The full experiment matrix and final numeric results belong in `EXPERIMENT_RESULTS_TRACKER.md`.
 
-| Experiment name | Model | Reward setting | Seed(s) | Notes |
-|---|---|---|---|---|
-| `TBD` | `TBD` | `TBD` | `TBD` | `TBD` |
+Use this section only for phase-level interpretation and reporting readiness.
 
-### Final quantitative results
-
-| Model | Mean score | Std dev | Mean return | Notes |
-|---|---|---|---|---|
-| `TBD` | `TBD` | `TBD` | `TBD` | `TBD` |
-
-### Plot checklist
+### Reporting readiness checklist
 - [ ] Learning curves saved
 - [ ] Final comparison chart saved
 - [ ] Seed summary table saved
 - [ ] Best checkpoint names recorded
 
-### Interpretation
+### Phase 4 conclusion summary
 - Most important outcome:
 - Most surprising result:
 - Biggest limitation:
@@ -1046,6 +1147,8 @@ Fill this in after each real experiment.
 6. Prepare final submission checklist
 
 ## Findings
+
+Use `EXPERIMENT_RESULTS_TRACKER.md` as the quantitative source when writing the report results section.
 
 ### Report progress
 - Introduction drafted:
@@ -1079,14 +1182,17 @@ Use this as the quick global log when you do not want to search through the phas
 | 2026-05-25 | `hillclimbracing/hcr_dqn/` | Removed | Keep RL fully separate from the simulator package |
 | 2026-05-25 | `PROJECT_PHASE_TRACKER.md` | Created | Track all phases, file changes, purposes, and findings |
 | 2026-05-25 | `PROJECT_PHASE_TRACKER.md` | Expanded | Turn it into a working manual with theory, code walkthroughs, and run instructions |
+| 2026-06-01 | `PROJECT_PHASE_TRACKER.md` | Updated | Move experiment-result ownership into `EXPERIMENT_RESULTS_TRACKER.md` and clarify final evaluation workflow |
+| 2026-06-01 | `EXPERIMENT_RESULTS_TRACKER.md` | Updated | Make it the source of truth for report-ready experiment results and align it with the phase tracker |
+| 2026-06-03 | `PROJECT_PHASE_TRACKER.md` | Updated | Add the DQN overestimation explanation and document why `double_dqn` is the next planned algorithm |
 
 ---
 
 ## 10. Notes For Future Me
 
 - Keep simulator changes separate from RL changes whenever possible
-- Log results immediately after each run so nothing is forgotten
-- If a run fails, still record it here because failed runs are useful evidence
+- Log results immediately after each run in `EXPERIMENT_RESULTS_TRACKER.md` so nothing is forgotten
+- If a run fails, still record it in `EXPERIMENT_RESULTS_TRACKER.md` because failed runs are useful evidence
 - If you change a hyperparameter, write down exactly what changed
 - If you add a new algorithm, explain what theory changed and why
 - Keep using plain language so later report writing is easier

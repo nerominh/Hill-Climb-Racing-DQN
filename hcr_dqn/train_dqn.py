@@ -62,6 +62,7 @@ def print_run_header(config: DQNConfig) -> None:
     print("Starting DQN training")
     print(f"Run name: {config.run_name}")
     print(f"Agent variant: {config.agent_variant}")
+    print(f"TD target mode: {config.td_target_mode}")
     print(f"Environment: {config.env_id}")
     print(
         "Env config: "
@@ -121,10 +122,31 @@ def print_episode_summary(
     print(summary, flush=True)
 
 
+def resolve_agent_class(config: DQNConfig):
+    # Support both the existing reward-shaping variants and a few friendly
+    # alias labels for DoubleDQN without changing the training entry point.
+    if config.agent_variant == "double_dqn":
+        config.td_target_mode = "double_dqn"
+        return DQNAgent
+
+    if config.agent_variant == "momentum_sensitive_double_dqn":
+        config.td_target_mode = "double_dqn"
+        return MomentumSensitiveDQNAgent
+
+    if config.agent_variant == "vanilla":
+        return DQNAgent
+
+    if config.agent_variant == "momentum_sensitive":
+        return MomentumSensitiveDQNAgent
+
+    raise ValueError(f"Unknown agent_variant: {config.agent_variant}")
+
+
 def train(config: DQNConfig | None = None) -> Path:
     # Main train function, train the selected DQN agent and return the best checkpoint path
 
     config = config or DQNConfig()
+    agent_cls = resolve_agent_class(config)
     seed_everything(config.seed)
     ensure_output_dirs(config)
     print_run_header(config)
@@ -134,13 +156,6 @@ def train(config: DQNConfig | None = None) -> Path:
 
     state_dim = int(env.observation_space.shape[0])
     action_dim = int(env.action_space.n)
-
-    if config.agent_variant == "vanilla":
-        agent_cls = DQNAgent
-    elif config.agent_variant == "momentum_sensitive":
-        agent_cls = MomentumSensitiveDQNAgent
-    else:
-        raise ValueError(f"Unknown agent_variant: {config.agent_variant}")
 
     agent = agent_cls(state_dim=state_dim, action_dim=action_dim, config=config)
 

@@ -1,0 +1,2 @@
+timestamp,mode,run_name,checkpoint_path,evaluation_episodes,first_seed,last_seed,mean_return,std_return,mean_score,std_score,mean_length,std_length
+2026-06-01T16:09:28,final,momentum_sensitive_dqn_seed123,/home/sail/minh/Hill-Climb-Racing-DQN/runs/momentum_sensitive_dqn_seed123/checkpoints/best_model.pt,30,10000,10029,-818.6028,4707.7937,367.7333,239.51,2252.8333,796.9729

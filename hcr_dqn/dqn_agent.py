@@ -50,6 +50,13 @@ class DQNAgent:
         self.state_dim = state_dim
         self.action_dim = action_dim
         self.config = config
+        self.td_target_mode = getattr(config, "td_target_mode", "dqn")
+
+        if self.td_target_mode not in {"dqn", "double_dqn"}:
+            raise ValueError(
+                f"Unsupported td_target_mode: {self.td_target_mode}. "
+                "Expected 'dqn' or 'double_dqn'."
+            )
 
         # GPU is used if available, otherwise CPU is completely fine.
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -99,6 +106,16 @@ class DQNAgent:
         # return the index of the action with the highest Q-value, converting from a PyTorch tensor to a Python integer
         return int(torch.argmax(q_values, dim=1).item()) 
 
+    def _compute_next_q_values(self, next_states: torch.Tensor) -> torch.Tensor:
+        # Compute the bootstrap value using either the standard DQN target
+        # or the DoubleDQN selection/evaluation split.
+        # For DQN, we take the max Q-value from the target network for the next states
+        if self.td_target_mode == "dqn":
+            return self.target_network(next_states).max(dim=1, keepdim=True).values
+        # For DoubleDQN, we use the online network to select the best next action, but we use the target network to evaluate that action's Q-value
+        next_actions = self.online_network(next_states).argmax(dim=1, keepdim=True)
+        return self.target_network(next_states).gather(1, next_actions)
+
     def train_step(self, batch: dict[str, np.ndarray]) -> float:
         # Run one Bellman update and return the scalar loss value
         states = torch.as_tensor(batch["states"], dtype=torch.float32, device=self.device)
@@ -111,9 +128,12 @@ class DQNAgent:
         current_q_values = self.online_network(states).gather(1, actions)
 
         with torch.no_grad():
-            # Vanilla DQN target:
+            # Standard DQN:
             # reward + gamma * max_a' Q_target(next_state, a')
-            next_q_values = self.target_network(next_states).max(dim=1, keepdim=True).values
+            #
+            # DoubleDQN:
+            # reward + gamma * Q_target(next_state, argmax_a' Q_online(next_state, a'))
+            next_q_values = self._compute_next_q_values(next_states)
             target_q_values = rewards + (1.0 - dones) * self.config.gamma * next_q_values
         # MSE loss between current Q-values and target Q-values
         loss = self.loss_fn(current_q_values, target_q_values)
