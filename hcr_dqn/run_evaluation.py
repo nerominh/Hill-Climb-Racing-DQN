@@ -72,51 +72,63 @@ def append_evaluation_summary(
     checkpoint_path: Path,
     metrics: dict[str, float | int | list[int] | list[dict[str, float | int]]],
 ) -> None:
-    """Append one evaluation result row so comparisons are easy to track."""
+    """Replace the latest summary for this run/mode so reruns stay tidy."""
 
     csv_path.parent.mkdir(parents=True, exist_ok=True)
-    file_exists = csv_path.exists()
+    fieldnames = [
+        "timestamp",
+        "mode",
+        "run_name",
+        "checkpoint_path",
+        "evaluation_episodes",
+        "first_seed",
+        "last_seed",
+        "mean_return",
+        "std_return",
+        "mean_score",
+        "std_score",
+        "mean_length",
+        "std_length",
+    ]
+    existing_rows: list[dict[str, str]] = []
 
-    with csv_path.open("a", newline="", encoding="utf-8") as handle:
+    if csv_path.exists():
+        with csv_path.open("r", newline="", encoding="utf-8") as handle:
+            existing_rows = [
+                row
+                for row in csv.DictReader(handle)
+                if not (
+                    row.get("mode", "") == mode
+                    and row.get("run_name", "") == run_name
+                )
+            ]
+
+    seeds = metrics.get("seeds", [])
+    existing_rows.append(
+        {
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            "mode": mode,
+            "run_name": run_name,
+            "checkpoint_path": str(checkpoint_path),
+            "evaluation_episodes": str(metrics["num_episodes"]),
+            "first_seed": str(seeds[0]) if seeds else "",
+            "last_seed": str(seeds[-1]) if seeds else "",
+            "mean_return": f"{round(float(metrics['mean_return']), 4):.4f}",
+            "std_return": f"{round(float(metrics['std_return']), 4):.4f}",
+            "mean_score": f"{round(float(metrics['mean_score']), 4):.4f}",
+            "std_score": f"{round(float(metrics['std_score']), 4):.4f}",
+            "mean_length": f"{round(float(metrics['mean_length']), 4):.4f}",
+            "std_length": f"{round(float(metrics['std_length']), 4):.4f}",
+        }
+    )
+
+    with csv_path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(
             handle,
-            fieldnames=[
-                "timestamp",
-                "mode",
-                "run_name",
-                "checkpoint_path",
-                "evaluation_episodes",
-                "first_seed",
-                "last_seed",
-                "mean_return",
-                "std_return",
-                "mean_score",
-                "std_score",
-                "mean_length",
-                "std_length",
-            ],
+            fieldnames=fieldnames,
         )
-        if not file_exists:
-            writer.writeheader()
-
-        seeds = metrics.get("seeds", [])
-        writer.writerow(
-            {
-                "timestamp": datetime.now().isoformat(timespec="seconds"),
-                "mode": mode,
-                "run_name": run_name,
-                "checkpoint_path": str(checkpoint_path),
-                "evaluation_episodes": metrics["num_episodes"],
-                "first_seed": seeds[0] if seeds else "",
-                "last_seed": seeds[-1] if seeds else "",
-                "mean_return": round(metrics["mean_return"], 4),
-                "std_return": round(metrics["std_return"], 4),
-                "mean_score": round(metrics["mean_score"], 4),
-                "std_score": round(metrics["std_score"], 4),
-                "mean_length": round(metrics["mean_length"], 4),
-                "std_length": round(metrics["std_length"], 4),
-            }
-        )
+        writer.writeheader()
+        writer.writerows(existing_rows)
 
 
 def append_evaluation_details(
@@ -126,44 +138,58 @@ def append_evaluation_details(
     checkpoint_path: Path,
     episode_metrics: list[dict[str, float | int]],
 ) -> None:
-    """Write the per-episode results so the final report has raw evidence."""
+    """Replace the latest per-episode details for this run/mode on rerun."""
 
     csv_path.parent.mkdir(parents=True, exist_ok=True)
-    file_exists = csv_path.exists()
+    fieldnames = [
+        "timestamp",
+        "mode",
+        "run_name",
+        "checkpoint_path",
+        "episode",
+        "seed",
+        "episode_return",
+        "episode_score",
+        "episode_length",
+    ]
+    existing_rows: list[dict[str, str]] = []
 
-    with csv_path.open("a", newline="", encoding="utf-8") as handle:
+    if csv_path.exists():
+        with csv_path.open("r", newline="", encoding="utf-8") as handle:
+            existing_rows = [
+                row
+                for row in csv.DictReader(handle)
+                if not (
+                    row.get("mode", "") == mode
+                    and row.get("run_name", "") == run_name
+                )
+            ]
+
+    with csv_path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(
             handle,
-            fieldnames=[
-                "timestamp",
-                "mode",
-                "run_name",
-                "checkpoint_path",
-                "episode",
-                "seed",
-                "episode_return",
-                "episode_score",
-                "episode_length",
-            ],
+            fieldnames=fieldnames,
         )
-        if not file_exists:
-            writer.writeheader()
+        writer.writeheader()
 
         timestamp = datetime.now().isoformat(timespec="seconds")
+        new_rows: list[dict[str, str]] = []
         for row in episode_metrics:
-            writer.writerow(
+            new_rows.append(
                 {
                     "timestamp": timestamp,
                     "mode": mode,
                     "run_name": run_name,
                     "checkpoint_path": str(checkpoint_path),
-                    "episode": row["episode"],
-                    "seed": row["seed"],
-                    "episode_return": round(float(row["episode_return"]), 4),
-                    "episode_score": round(float(row["episode_score"]), 4),
-                    "episode_length": int(row["episode_length"]),
+                    "episode": str(row["episode"]),
+                    "seed": str(row["seed"]),
+                    "episode_return": f"{round(float(row['episode_return']), 4):.4f}",
+                    "episode_score": f"{round(float(row['episode_score']), 4):.4f}",
+                    "episode_length": str(int(row["episode_length"])),
                 }
             )
+
+        writer.writerows(existing_rows + new_rows)
 
 
 def load_config_from_checkpoint(checkpoint_path: Path, run_name_override: str | None = None) -> DQNConfig:

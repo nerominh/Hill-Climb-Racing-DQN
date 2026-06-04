@@ -29,6 +29,7 @@ Important:
 ### Main run artifacts to read before filling this file
 
 - `runs/<run_name>/logs/training_metrics.csv`
+- `runs/<run_name>/logs/validation_metrics.csv`
 - `runs/<run_name>/logs/evaluation_summaries.csv`
 - `runs/<run_name>/logs/evaluation_episode_details.csv`
 - `runs/<run_name>/checkpoints/best_model.pt`
@@ -208,29 +209,55 @@ Important caution:
 - this is a training curve, not the final held-out test result
 - use it together with the final evaluation plots, not instead of them
 
-Current comparative interpretation for `vanilla_dqn` and `momentum_sensitive_dqn`:
-
-- This is a well-constructed evaluation plot. Presenting the mean together with the across-seed standard deviation for `n = 5` gives an academically honest view of the training dynamics, which is especially important in reinforcement learning because performance can vary substantially across random seeds.
+Current comparative interpretation for `vanilla_dqn`, `momentum_sensitive_dqn`, and `vanilla_double_dqn`:
 
 1. Early-stage sample efficiency
-- Observation: `momentum_sensitive_dqn` shows a clearly stronger initial learning rate. Between episodes 0 and 100, its mean training score rises much faster than `vanilla_dqn`, reaching roughly 150 while the vanilla baseline still struggles to move much beyond 75.
-- Interpretation: the momentum-sensitive reward shaping appears to accelerate early policy discovery. By rewarding more consistent forward motion, it likely helps the agent leave the near-random exploration regime earlier than the baseline.
+- Observation: `momentum_sensitive_dqn` still rises the fastest in the early part of training. It learns useful forward-driving behavior earlier than the other two methods.
+- Interpretation: the shaped reward is directly changing the agent's behavior incentives, so it can speed up early discovery even without changing the core target rule.
 
-2. Asymptotic performance and policy collapse
-- Observation: the two trajectories separate in the opposite direction later in training. `momentum_sensitive_dqn` appears to peak around episode 180 at roughly 220 mean score, then degrades and ends closer to 150 by episode 300. In contrast, `vanilla_dqn` improves more slowly but more steadily, and appears to finish around 280 to 300 by the end of training.
-- Interpretation: this pattern is consistent with late-stage policy collapse or catastrophic forgetting in `momentum_sensitive_dqn`. The shaping helps early exploitation, but may destabilize learning once the state distribution becomes harder and vehicle speed increases. The agent may over-specialize to a narrow high-momentum driving style and then fail when it encounters difficult terrain or unstable body states.
+2. Late-stage training trend
+- Observation: `vanilla_dqn` improves more slowly but ends with the strongest late-stage raw training curve. `vanilla_double_dqn` improves more cautiously and usually stays below `vanilla_dqn` in mean episode score during training. `momentum_sensitive_dqn` peaks earlier and then drops later.
+- Interpretation: the current training plot suggests three different behaviors:
+- `vanilla_dqn` is slower but eventually strong
+- `momentum_sensitive_dqn` is fast early but less stable later
+- `vanilla_double_dqn` is more conservative and does not clearly convert that caution into better final training-time score under the current budget
 
 3. Inter-seed variance
-- Observation: both methods show wide standard deviation bands, but the late-stage variance of `momentum_sensitive_dqn` is particularly extreme. Its lower band can fall near zero or below, while its upper band reaches much higher values.
-- Interpretation: this suggests high sensitivity to initialization and early exploration. For `vanilla_dqn`, the widening band in the later episodes may mean that one or two seeds learn very strong policies while other seeds remain mediocre, creating a high mean with large spread. For `momentum_sensitive_dqn`, the very low lower bound suggests that at least one seed may suffer a severe collapse that drags the mean downward.
+- Observation: `vanilla_double_dqn` shows a very wide shaded band in the later part of training. That means its across-seed behavior is not consistently better even if some seeds become strong.
+- Interpretation: the main story is not that DoubleDQN fails on every seed. The main story is that it is highly seed-sensitive in the current setup, so the mean can be dragged down by one or two poor runs.
 
-4. Algorithmic hypothesis
-- A plausible explanation is that the momentum-sensitive shaping improves the short-term exploration and exploitation balance, but worsens long-term value instability. Standard DQN already has a tendency to overestimate action values through the `max_a Q(s', a)` target. If the momentum-sensitive reward inflates the temporal-difference target during sustained forward movement, that bias may become stronger at the same time the car is entering faster and more unstable physics states, such as aggressive hill launches or chassis flips.
+4. What this training curve cannot prove
+- Observation: this plot is still based on training episode score, not the held-out final evaluation.
+- Interpretation: a method can look strong here and still lose on held-out evaluation, or vice versa. Use this plot together with the final bar charts and box plot before making claims.
 
 Important reporting note:
 - Use this interpretation when discussing `plots/plot_1_learning_curves_mean_episode_score.png`.
 - Do not treat this section as a replacement for final reporting.
 - Final performance claims should still be grounded in the held-out results recorded from `evaluation_summaries.csv` and `evaluation_episode_details.csv`.
+
+### Plot 6: Validation learning curves
+
+File:
+- `plots/plot_6_validation_learning_curves_mean_score.png`
+
+Data source:
+- `runs/<run_name>/logs/validation_metrics.csv`
+- legacy fallback for older runs: validation checkpoints reconstructed from `training_metrics.csv`
+- metric used: held-out validation `mean_score` during training
+
+What the plot shows:
+- one line per variant
+- each point is a greedy validation score measured on the fixed validation seed block during training
+- the shaded band is the across-seed standard deviation at that checkpoint
+
+Why this plot matters more than raw training score for checkpoint selection:
+- it removes exploration noise
+- it uses a held-out seed block instead of the same trajectory that generated the replay data
+- it is a better view of which checkpoints are actually improving on repeatable terrains
+
+Reporting note:
+- this is the preferred plot when discussing checkpoint-selection quality and validation stability
+- `plot_1` is still useful for training dynamics, but `plot_6` is the stronger validation-based plot
 
 ### Plot 2: Final score comparison bar chart
 
@@ -254,6 +281,12 @@ How to read it:
 What this plot is good for:
 - the cleanest side-by-side final comparison
 - a fast visual answer to the question, "Which method performed best overall?"
+
+Current interpretation:
+- `momentum_sensitive_dqn` currently has the highest final mean score at about `454.49`.
+- `vanilla_dqn` is next at about `403.15`.
+- `vanilla_double_dqn` is slightly lower at about `380.44`.
+- The large DoubleDQN error bar is important. It suggests the lower mean is driven partly by instability across seeds, not by uniformly weak performance on every run.
 
 ### Plot 3: Final return comparison bar chart
 
@@ -282,6 +315,12 @@ Important caution:
 - return is an RL metric, not the same as the game score
 - a method can improve return without improving score by the same amount
 
+Current interpretation:
+- `vanilla_dqn` has the highest final mean return at about `1816.58`.
+- `momentum_sensitive_dqn` has the best final mean score, but not the best return.
+- This mismatch suggests the shaped reward is changing behavior in a way that helps game score more than the original environment-return objective.
+- `vanilla_double_dqn` has the lowest mean return of the three methods in the current experiment set, so the DoubleDQN target rule alone did not improve reward optimization under this configuration.
+
 ### Plot 4: Final episode length comparison bar chart
 
 File:
@@ -305,6 +344,12 @@ How to read it:
 What this plot is good for:
 - separating "stays alive" from "actually drives well"
 - supporting discussion about conservative behavior versus efficient forward motion
+
+Current interpretation:
+- `momentum_sensitive_dqn` has the highest mean episode length at about `1917.36`.
+- `vanilla_dqn` and `vanilla_double_dqn` are almost identical on mean episode length, both around `1744`.
+- This suggests the main difference between vanilla DQN and vanilla DoubleDQN in this project is not simple survival time.
+- The stronger score of `momentum_sensitive_dqn` is consistent with both longer survival and better conversion of that survival into forward progress on average.
 
 ### Plot 5: Seed variance box plot for final score
 
@@ -334,6 +379,12 @@ Why this plot matters in this project:
 - reinforcement learning can be very seed-sensitive
 - this plot helps justify whether a gain is consistently repeatable or only driven by one or two lucky runs
 
+Current interpretation:
+- `vanilla_dqn` has the narrowest spread across seeds among the three methods.
+- `momentum_sensitive_dqn` has a higher median and higher upper-end outcomes, but still shows noticeable spread.
+- `vanilla_double_dqn` has the widest spread, including one very weak seed and several strong seeds.
+- This supports the conclusion that the main weakness of plain DoubleDQN here is inconsistency rather than complete failure.
+
 ---
 
 ## 3. Seed Plan
@@ -355,9 +406,9 @@ Record each method here before running it.
 
 | Experiment ID | Method Name | Main Change | Fixed Settings Confirmed? | Number of Seeds Planned | Status |
 |---|---|---|---|---:|---|
-| EXP-001 | vanilla_dqn | Baseline | Yes | 5 | Planned |
-| EXP-002 | momentum_sensitive_dqn | Reward shaping for smoother forward motion and less unstable flipping/balancing | Yes | 5 | Planned |
-| EXP-003 | double_dqn | Replace the standard DQN max target with decoupled online-action selection and target-network evaluation | Yes | 5 | Planned |
+| EXP-001 | vanilla_dqn | Baseline | Yes | 5 | Completed |
+| EXP-002 | momentum_sensitive_dqn | Reward shaping for smoother forward motion and less unstable flipping/balancing | Yes | 5 | Completed |
+| EXP-003 | vanilla_double_dqn | Replace the standard DQN max target with decoupled online-action selection and target-network evaluation | Yes | 5 | Completed |
 | EXP-004 | double_dqn_variation_tbd | Future variation on top of DoubleDQN after the plain DoubleDQN baseline is understood | No, design pending | 5 | Backlog |
 
 ---
@@ -373,6 +424,16 @@ Record each method here before running it.
 | EXP-001 | vanilla_dqn | 999 | `vanilla_dqn_seed999` | | | | |
 | EXP-001 | vanilla_dqn | 2026 | `vanilla_dqn_seed2026` | | | |At the beggining, the agent will always flip 2 anti-clockwise full rounds, barely keeping the head from the ground. But all three episode the agent was able to survive |
 
+### EXP-003
+
+| Experiment ID | Method | Seed | Run Name | Final Mean Score | Final Mean Return | Final Mean Length | Notes |
+|---|---|---:|---|---:|---:|---:|---|
+| EXP-003 | vanilla_double_dqn | 7 | `vanilla_double_dqn_seed7` | 289.0000 | 1103.7821 | 955.4333 | Weak seed with short average survival compared with the stronger DoubleDQN runs |
+| EXP-003 | vanilla_double_dqn | 42 | `vanilla_double_dqn_seed42` | 414.9333 | -107.4766 | 2558.0000 | Survives for a long time on average but does not convert that reliably into positive return |
+| EXP-003 | vanilla_double_dqn | 123 | `vanilla_double_dqn_seed123` | 553.8333 | 2447.5530 | 2013.2000 | Strong seed; shows that DoubleDQN can learn a high-scoring policy in this setup |
+| EXP-003 | vanilla_double_dqn | 999 | `vanilla_double_dqn_seed999` | 518.0333 | 2358.7282 | 2075.7000 | Another strong seed; supports the view that the issue is inconsistency rather than universal weakness |
+| EXP-003 | vanilla_double_dqn | 2026 | `vanilla_double_dqn_seed2026` | 126.4000 | 790.9365 | 1117.8667 | Severe underperforming seed that drags the mean down and inflates variance |
+
 
 ---
 
@@ -382,9 +443,9 @@ After all seeds for one method are complete, summarize them here.
 
 | Experiment ID | Method | Num Runs | Final Mean Score | Score Variance | Score Std Dev | Final Mean Return | Return Variance | Return Std Dev | Final Mean Length | Length Variance | Length Std Dev |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| EXP-001 | vanilla_dqn | 5 |  |  |  |  |  |  |  |  |  |
-| EXP-002 | momentum_sensitive_dqn | 5 |  |  |  |  |  |  |  |  |  |
-| EXP-003 | double_dqn | 5 |  |  |  |  |  |  |  |  |  |
+| EXP-001 | vanilla_dqn | 5 | 403.1534 | 7161.3874 | 84.6250 | 1816.5772 | 164156.7143 | 405.1626 | 1744.8400 | 193381.3374 | 439.7514 |
+| EXP-002 | momentum_sensitive_dqn | 5 | 454.4933 | 8051.0086 | 89.7274 | 1468.6241 | 1769309.2949 | 1330.1539 | 1917.3600 | 153788.3371 | 392.1586 |
+| EXP-003 | vanilla_double_dqn | 5 | 380.4400 | 30771.1339 | 175.4170 | 1318.7046 | 1178667.8656 | 1085.6647 | 1744.0400 | 464742.4679 | 681.7202 |
 | EXP-004 | double_dqn_variation_tbd | 5 |  |  |  |  |  |  |  |  |  |
 
 Interpretation:
@@ -416,7 +477,7 @@ Config values:
 - `epsilon_decay`: 0.995
 - `target_update_frequency`: 1_000
 - `evaluation_frequency`: 25
-- `evaluation_episodes`: 5 for validation during training
+- `evaluation_episodes`: 10
 - final held-out evaluation: 30 episodes on seeds `10000` to `10029` by default
 
 What changed relative to baseline:
@@ -457,7 +518,7 @@ Config values:
 - `epsilon_decay`: 0.995
 - `target_update_frequency`: 1_000
 - `evaluation_frequency`: 25
-- `evaluation_episodes`: 5 for validation during training
+- `evaluation_episodes`: 10
 - final held-out evaluation: 30 episodes on seeds `10000` to `10029` by default
 - `momentum_bonus_scale`: 0.05
 - `momentum_stall_penalty`: 0.02
@@ -497,10 +558,10 @@ Evaluation comments to reuse in the report:
 - A reasonable hypothesis is that the shaping terms encourage aggressive momentum exploitation early on, but may also amplify value overestimation or over-specialization once the terrain and body dynamics become more difficult.
 - Because this variation still uses the standard DQN target, it does not remove the selection-evaluation coupling that can cause overoptimistic Q-targets. That is the main reason `double_dqn` is the next planned method.
 
-### EXP-003: DoubleDQN
+### EXP-003: Vanilla DoubleDQN
 
 Method description:
-- DoubleDQN keeps the replay buffer, epsilon-greedy exploration, target-network structure, and Q-network architecture from the vanilla baseline, but changes how the temporal-difference target is computed.
+- `vanilla_double_dqn` keeps the replay buffer, epsilon-greedy exploration, target-network structure, and Q-network architecture from the vanilla baseline, but changes how the temporal-difference target is computed.
 - The goal is to reduce overestimation bias in standard DQN.
 - Instead of using one max over a single estimator for both choosing and valuing the next action, `double_dqn` decouples the two steps:
 - the online network selects the best next action
@@ -508,7 +569,7 @@ Method description:
 - This method is being tried after `momentum_sensitive_dqn` because it addresses a deeper mathematical issue in DQN itself rather than only changing the reward signal.
 
 Config values:
-- `run_name` pattern: double_dqn_seed_(num_seed)
+- `run_name` pattern: vanilla_double_dqn_seed_(num_seed)
 - `seed` list: 42, 123, 999, 2026, 7
 - `num_episodes`: 300
 - `max_episode_steps`: 3000
@@ -524,7 +585,8 @@ Config values:
 - `epsilon_decay`: 0.995
 - `target_update_frequency`: 1_000
 - `evaluation_frequency`: 25
-- `evaluation_episodes`: 5 for validation during training
+- `evaluation_episodes`: 5 for validation during training in these completed runs
+- current code default for future runs: 10 validation episodes
 - final held-out evaluation: 30 episodes on seeds `10000` to `10029` by default
 
 What changed relative to baseline:
@@ -539,10 +601,21 @@ Main reason for this experiment:
 - This third method tests whether the standard DQN max target is itself a source of instability or overoptimism in Hill Climb Racing.
 - If `double_dqn` improves final score, stability, or seed consistency, then the next variation should probably build on DoubleDQN instead of standard DQN.
 
-Expected evaluation questions:
-- Does `double_dqn` reduce late-stage collapse relative to `momentum_sensitive_dqn`?
-- Does it improve seed-to-seed stability relative to `vanilla_dqn`?
-- Does it preserve or improve final held-out score?
+Observed result summary:
+- Final mean score: about `380.44`, which is slightly below `vanilla_dqn` at `403.15` and below `momentum_sensitive_dqn` at `454.49`.
+- Final score standard deviation: about `175.42`, which is much larger than `vanilla_dqn` at `84.62`.
+- Final mean return: about `1318.70`, the lowest of the three tested completed methods.
+- Final mean episode length: about `1744.04`, almost identical to `vanilla_dqn` and lower than `momentum_sensitive_dqn`.
+
+Interpretation to reuse in the report:
+- Plain DoubleDQN did not clearly outperform the vanilla baseline in this project.
+- The most important weakness was not universal failure, but inconsistency across seeds.
+- Some DoubleDQN seeds were strong, such as `seed123` and `seed999`, but one very weak seed, `seed2026`, pulled the mean down sharply.
+- This suggests that the expected reduction in overestimation bias did not translate into a robust across-seed gain under the current hyperparameter and training-budget setting.
+- A plausible explanation is that DoubleDQN only changes the bootstrap target, while `momentum_sensitive_dqn` changes the actual behavior incentives seen by the learner. In this environment, reward alignment may matter more than overestimation reduction alone.
+- Another plausible explanation is that the original 5-episode validation protocol was too noisy for a high-variance method. A checkpoint that looks best on a tiny validation sweep may not stay best on the larger 30-episode held-out final evaluation.
+- Therefore, the current evidence does not justify replacing `vanilla_dqn` with plain `vanilla_double_dqn` as the default base algorithm yet.
+
 
 ### EXP-004: DoubleDQN-Based Variation (TBD)
 

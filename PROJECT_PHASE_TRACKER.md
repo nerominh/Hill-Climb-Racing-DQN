@@ -49,15 +49,40 @@ Use this section as the official evaluation rule for the whole project.
 
 | Evaluation type | Purpose | When it is used | Seed set | Exploration | Main output |
 |---|---|---|---|---|---|
-| Validation evaluation | Pick the best checkpoint during training | Inside `train_dqn.py` | `1000` to `1004` | Off | Mean return, mean score, mean length |
+| Validation evaluation | Pick the best checkpoint during training | Inside `train_dqn.py` | `1000` to `1009` by default in the current code | Off | Mean return, standard deviation, mean score, mean length, and `validation_metrics.csv` |
 | Final evaluation | Report final model performance | Inside `run_evaluation.py` | `10000` to `10029` by default | Off | Mean, standard deviation, and per-episode results |
 
 ### What this means in practice
 
 - Training does not choose the best checkpoint on the same seed block used for final reporting.
+- Validation is used while training is still in progress, so it is allowed to influence which checkpoint becomes `best_model.pt`.
+- Final evaluation is used after the checkpoint has already been selected, so it should not be used to tune the model or choose between checkpoints.
 - Final evaluation uses a held-out terrain set that starts at seed `10000`.
 - The final evaluation seed block is fixed on purpose so every model is judged on the same terrains.
 - `config.seed` is still important for training reproducibility, but it does not control the default final evaluation seeds.
+- The current code uses a stronger validation sweep than before:
+  - validation is now 10 held-out episodes by default instead of 5
+  - this reduces checkpoint-selection noise and makes validation-based plots more meaningful
+
+### Why validation is still needed when final evaluation exists
+
+Training creates many possible policies, not just one:
+- checkpoint after episode 25
+- checkpoint after episode 50
+- checkpoint after episode 75
+- and so on
+
+Validation gives the training loop a fair rule for choosing among those checkpoints. In the current code, the checkpoint with the best validation `mean_score` is saved as `best_model.pt`.
+
+Final evaluation answers a different question. It measures the already-selected checkpoint on a larger held-out seed block for report-quality results. If final evaluation is also used to choose checkpoints, tune reward shaping, or decide which run to keep, then it stops being a clean final test and becomes another validation set.
+
+Short version:
+- validation chooses the model
+- final evaluation reports the model's held-out performance
+
+Historical note:
+- older runs completed before this protocol change may still have used the earlier 5-episode validation setting
+- when comparing old and new runs, record that difference in `EXPERIMENT_RESULTS_TRACKER.md`
 
 ### Official reporting rule
 
@@ -88,6 +113,10 @@ What this does by default:
 - `runs/<run_name>/logs/evaluation_summaries.csv`
 - `runs/<run_name>/logs/evaluation_episode_details.csv`
 - after each completed run, copy the important numbers into `EXPERIMENT_RESULTS_TRACKER.md`
+
+Rerun behavior:
+- `run_evaluation.py` now replaces the previous rows for the same `run_name` and mode instead of endlessly appending duplicates
+- that means you can rerun final evaluation or validation evaluation for the same run without manually deleting `evaluation_summaries.csv` or `evaluation_episode_details.csv`
 
 ### Recommendation for final report tables
 
@@ -226,7 +255,7 @@ Why this matters in this project:
 - the `momentum_sensitive_dqn` reward shaping can change which behaviors are favored, but it does not remove this core DQN target bias
 - that means a reward-shaping variant can still inherit the same mathematical bottleneck as vanilla DQN
 
-### 3.10 Why DoubleDQN is the next algorithm to try
+### 3.10 How DoubleDQN is used in this repository
 - DoubleDQN keeps the DQN idea but decouples action selection from action evaluation
 - Selection uses the online network:
 
@@ -243,11 +272,38 @@ Q_target(s', argmax_a Q_online(s', a))
 - Because the online and target networks have different weights, they are less likely to share the exact same localized overestimation error
 - This reduces overoptimistic targets and usually leads to more stable learning than standard DQN
 
-Why this is the right next step for this repository:
-1. First test `vanilla_dqn` to establish the baseline.
-2. Then test `momentum_sensitive_dqn` to see what reward shaping changes while the core DQN update stays the same.
-3. After that, address the deeper algorithmic bottleneck directly by testing `double_dqn`.
-4. Only after plain `double_dqn` is understood should a new DoubleDQN-based variation be designed and tested.
+How the code now exposes this:
+1. `agent_variant` controls the reward-style family:
+- `vanilla`
+- `momentum_sensitive`
+2. `td_target_mode` controls the Bellman target rule:
+- `dqn`
+- `double_dqn`
+3. Because those two choices are separated, the repository can now represent four combinations:
+- vanilla DQN
+- vanilla DoubleDQN
+- momentum-sensitive DQN
+- momentum-sensitive DoubleDQN
+
+Why this matters conceptually:
+- reward shaping changes what the agent is encouraged to do
+- DoubleDQN changes how the bootstrap target is estimated
+- these are different intervention levels, so they should be analyzed separately before being combined
+
+### 3.11 What the first DoubleDQN results mean theoretically
+- The implemented DoubleDQN baseline did not automatically outperform vanilla DQN in this project
+- That does not mean the DoubleDQN idea is wrong
+- It means the main bottleneck in this environment may not be overestimation bias alone
+- In Hill Climb Racing, behavior quality also depends strongly on:
+- reward alignment
+- physics-sensitive exploration outcomes
+- terrain-specific failure modes
+- checkpoint-selection noise under multi-seed variance
+
+Working interpretation at this stage:
+- standard DQN optimism may not be the only or dominant source of error here
+- your `momentum_sensitive_dqn` reward shaping changes behavior more directly than DoubleDQN does
+- therefore a reward-shaping method can still outperform plain DoubleDQN even though DoubleDQN is mathematically better motivated than vanilla DQN
 
 ---
 
@@ -423,8 +479,8 @@ What to understand:
 - the training loop creates the agent and replay buffer
 - each episode collects transitions
 - learning only starts after enough experience exists
-- evaluation runs periodically
-- the best checkpoint is saved
+- validation evaluation runs periodically
+- the best checkpoint is saved according to validation `mean_score`
 
 ### Step 8. Understand evaluation (Important)
 - Read `hcr_dqn/evaluate_dqn.py`
@@ -434,8 +490,9 @@ What to understand:
 - evaluation turns exploration off
 - evaluation measures policy quality more cleanly than training episodes
 - there are now two evaluation layers:
-- validation evaluation for checkpoint selection during training
-- final evaluation for report-quality held-out testing
+- validation evaluation for checkpoint selection during training, using the smaller seed block from `validation_seed_start`
+- final evaluation for report-quality held-out testing, using the larger seed block from `final_evaluation_seed_start`
+- validation results can influence training decisions; final evaluation results should be kept for reporting after the checkpoint is selected
 - `run_evaluation.py` is the simplest script to use after training
 
 ---
@@ -671,8 +728,8 @@ This is the mathematical center of Phase 1.
 - learn if enough data exists
 - update target network when scheduled
 9. Decay epsilon after each episode
-10. Evaluate every `evaluation_frequency` episodes
-11. Save the best checkpoint
+10. Run validation evaluation every `evaluation_frequency` episodes
+11. Save the best checkpoint when validation `mean_score` improves
 12. Write logs to CSV
 
 #### How to understand this file
@@ -818,6 +875,7 @@ These three numbers answer different questions:
 
 The seed choice also matters:
 - validation mode uses a small held-out seed set for fast checkpoint comparison
+- in the current code, that validation set is still much smaller than final evaluation, but it is stronger than before because it now uses 10 episodes by default
 - final mode uses a larger, different held-out seed set so report numbers are not based on the same terrains used during training selection
 
 ### Current evaluation notes from the first saved baseline
@@ -838,7 +896,7 @@ Interpretation:
 
 Recommended next checks:
 - Watch several greedy evaluation episodes visually to see whether the car is moving confidently or just surviving.
-- Increase evaluation episodes from 5 to 20 or more before drawing strong conclusions from the averages.
+- Use the 30-episode final evaluation before drawing report-level conclusions from the averages.
 - Compare this checkpoint against a random or earlier checkpoint to confirm that score is genuinely improving.
 - Inspect per-episode metrics, not just means, to see whether performance is consistent or highly variable.
 - If the behavior looks too cautious, tune one thing at a time such as reward design, exploration schedule, training length, or action-space choices.
@@ -907,8 +965,9 @@ runs/phase1_baseline/
 
 | File | Meaning |
 |---|---|
-| `runs/phase1_baseline/checkpoints/best_model.pt` | Best saved checkpoint according to evaluation score |
+| `runs/phase1_baseline/checkpoints/best_model.pt` | Best saved checkpoint according to validation `mean_score` |
 | `runs/phase1_baseline/logs/training_metrics.csv` | Per-episode metrics written during training |
+| `runs/phase1_baseline/logs/validation_metrics.csv` | Validation-only checkpoint-selection metrics written every evaluation checkpoint |
 
 ---
 
@@ -919,6 +978,14 @@ The main log file is:
 ```text
 runs/phase1_baseline/logs/training_metrics.csv
 ```
+
+There is also a stronger validation-specific log:
+
+```text
+runs/phase1_baseline/logs/validation_metrics.csv
+```
+
+Use that file when you want to plot held-out checkpoint-selection score during training instead of raw training episode score.
 
 ### Columns explained
 
@@ -931,9 +998,9 @@ runs/phase1_baseline/logs/training_metrics.csv
 | `episode_length` | Number of steps in the episode |
 | `epsilon` | Exploration rate after decay |
 | `mean_loss` | Average training loss collected during that episode |
-| `eval_mean_return` | Evaluation return, only populated on evaluation episodes |
-| `eval_mean_score` | Evaluation score, only populated on evaluation episodes |
-| `eval_mean_length` | Evaluation episode length, only populated on evaluation episodes |
+| `eval_mean_return` | Validation return, only populated on validation episodes during training |
+| `eval_mean_score` | Validation score, only populated on validation episodes during training |
+| `eval_mean_length` | Validation episode length, only populated on validation episodes during training |
 
 ### What trends to look for
 
@@ -1009,7 +1076,7 @@ After filling this checklist, update:
 - Get vanilla DQN training reliably and produce a baseline learning curve
 
 ## Status
-- Not started yet
+- In progress
 
 ## Step-by-step plan
 
@@ -1086,10 +1153,10 @@ Keep only the high-level takeaways here:
 - Step 4: `double_dqn_<tbd_variation>`
 
 ### Phase 3 conclusion summary
-- Best-performing variant according to `EXPERIMENT_RESULTS_TRACKER.md`:
-- Most stable variant according to `EXPERIMENT_RESULTS_TRACKER.md`:
-- Main interpretation:
-- What should be tested next after plain `double_dqn`:
+- Best-performing variant according to `EXPERIMENT_RESULTS_TRACKER.md`: `momentum_sensitive_dqn` so far on final mean score
+- Most stable variant according to `EXPERIMENT_RESULTS_TRACKER.md`: `vanilla_dqn` so far on final score standard deviation
+- Main interpretation: plain `double_dqn` appears to reduce neither variance nor final-score weakness enough to replace the current baseline by itself
+- What should be tested next after plain `double_dqn`: combine the stronger target rule with a behavior-improving variation such as momentum-sensitive reward shaping, then reevaluate with the stronger validation protocol
 
 ---
 
@@ -1185,6 +1252,8 @@ Use this as the quick global log when you do not want to search through the phas
 | 2026-06-01 | `PROJECT_PHASE_TRACKER.md` | Updated | Move experiment-result ownership into `EXPERIMENT_RESULTS_TRACKER.md` and clarify final evaluation workflow |
 | 2026-06-01 | `EXPERIMENT_RESULTS_TRACKER.md` | Updated | Make it the source of truth for report-ready experiment results and align it with the phase tracker |
 | 2026-06-03 | `PROJECT_PHASE_TRACKER.md` | Updated | Add the DQN overestimation explanation and document why `double_dqn` is the next planned algorithm |
+| 2026-06-04 | `PROJECT_PHASE_TRACKER.md` | Updated | Record DoubleDQN as an implemented method, strengthen the validation protocol, and document rerun-safe evaluation behavior |
+| 2026-06-04 | `PROJECT_PHASE_TRACKER.md` | Updated | Clarify that validation selects checkpoints while final evaluation is reserved for held-out reporting |
 
 ---
 

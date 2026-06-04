@@ -56,6 +56,11 @@ def write_training_row(csv_writer, row: dict[str, float | int]) -> None:
     csv_writer.writerow(row)
 
 
+def write_validation_row(csv_writer, row: dict[str, float | int | str]) -> None:
+    # Write one validation-evaluation row so checkpoint selection can be audited later
+    csv_writer.writerow(row)
+
+
 def print_run_header(config: DQNConfig) -> None:
     # Print the main settings once so the run is easy to follow
 
@@ -79,7 +84,9 @@ def print_run_header(config: DQNConfig) -> None:
         f"gamma={config.gamma}, "
         f"lr={config.learning_rate}, "
         f"warmup_steps={config.warmup_steps}, "
-        f"target_update_frequency={config.target_update_frequency}"
+        f"target_update_frequency={config.target_update_frequency}, "
+        f"validation_episodes={config.evaluation_episodes}, "
+        f"validation_seed_start={config.validation_seed_start}"
     )
     print(f"Logs will be written to: {config.log_dir}")
     print(f"Checkpoints will be written to: {config.checkpoint_dir}")
@@ -160,14 +167,18 @@ def train(config: DQNConfig | None = None) -> Path:
     agent = agent_cls(state_dim=state_dim, action_dim=action_dim, config=config)
 
     log_path = config.log_dir / "training_metrics.csv"
+    validation_log_path = config.log_dir / "validation_metrics.csv"
     best_checkpoint_path = config.checkpoint_dir / "best_model.pt"
     best_mean_score = float("-inf")
 
     global_step = 0
 
-    with log_path.open("w", newline="", encoding="utf-8") as handle:
+    with (
+        log_path.open("w", newline="", encoding="utf-8") as training_handle,
+        validation_log_path.open("w", newline="", encoding="utf-8") as validation_handle,
+    ):
         writer = csv.DictWriter(
-            handle,
+            training_handle,
             fieldnames=[
                 "episode",
                 "global_step",
@@ -182,6 +193,25 @@ def train(config: DQNConfig | None = None) -> Path:
             ],
         )
         writer.writeheader()
+        validation_writer = csv.DictWriter(
+            validation_handle,
+            fieldnames=[
+                "episode",
+                "global_step",
+                "validation_episodes",
+                "first_seed",
+                "last_seed",
+                "mean_return",
+                "std_return",
+                "mean_score",
+                "std_score",
+                "mean_length",
+                "std_length",
+                "epsilon",
+                "saved_best_checkpoint",
+            ],
+        )
+        validation_writer.writeheader()
 
         try:
             for episode in range(1, config.num_episodes + 1):
@@ -240,6 +270,7 @@ def train(config: DQNConfig | None = None) -> Path:
                 saved_best = False
                 if episode % config.evaluation_frequency == 0:
                     eval_metrics = evaluate_agent(agent, config, mode="validation")
+                    validation_seeds = eval_metrics.get("seeds", [])
 
                     if eval_metrics["mean_score"] > best_mean_score:
                         best_mean_score = eval_metrics["mean_score"]
@@ -251,6 +282,25 @@ def train(config: DQNConfig | None = None) -> Path:
                             f"path={best_checkpoint_path}",
                             flush=True,
                         )
+
+                    write_validation_row(
+                        validation_writer,
+                        {
+                            "episode": episode,
+                            "global_step": global_step,
+                            "validation_episodes": int(eval_metrics.get("num_episodes", 0)),
+                            "first_seed": validation_seeds[0] if validation_seeds else "",
+                            "last_seed": validation_seeds[-1] if validation_seeds else "",
+                            "mean_return": round(float(eval_metrics["mean_return"]), 4),
+                            "std_return": round(float(eval_metrics["std_return"]), 4),
+                            "mean_score": round(float(eval_metrics["mean_score"]), 4),
+                            "std_score": round(float(eval_metrics["std_score"]), 4),
+                            "mean_length": round(float(eval_metrics["mean_length"]), 4),
+                            "std_length": round(float(eval_metrics["std_length"]), 4),
+                            "epsilon": round(agent.epsilon, 6),
+                            "saved_best_checkpoint": "yes" if saved_best else "no",
+                        },
+                    )
 
                 mean_loss = float(np.mean(episode_losses)) if episode_losses else 0.0
 
@@ -283,7 +333,8 @@ def train(config: DQNConfig | None = None) -> Path:
                     saved_best=saved_best,
                 )
 
-                handle.flush()
+                training_handle.flush()
+                validation_handle.flush()
         finally:
             env.close()
 

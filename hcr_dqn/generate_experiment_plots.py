@@ -281,6 +281,92 @@ def load_training_series(
     return dict(grouped_series)
 
 
+def load_validation_series(
+    runs_dir: Path,
+    metric_name: str,
+    allowed_variants: set[str] | None = None,
+) -> dict[str, list[TrainingSeries]]:
+    """Read validation score traces for checkpoint-selection analysis.
+
+    Newer runs may have a dedicated validation_metrics.csv file. Older runs can
+    still be supported by falling back to the validation columns already stored
+    in training_metrics.csv.
+    """
+
+    if not runs_dir.exists():
+        raise FileNotFoundError(
+            f"Could not find runs directory at {runs_dir}. "
+            "Train the models first so validation logs exist."
+        )
+
+    validation_metric_column = metric_name
+    legacy_training_column_map = {
+        "mean_score": "eval_mean_score",
+        "mean_return": "eval_mean_return",
+        "mean_length": "eval_mean_length",
+    }
+    legacy_training_column = legacy_training_column_map.get(metric_name, metric_name)
+
+    grouped_series: dict[str, list[TrainingSeries]] = defaultdict(list)
+
+    for run_dir in sorted(child for child in runs_dir.iterdir() if child.is_dir()):
+        run_name = run_dir.name
+        variant, seed = infer_variant_and_seed(run_name)
+
+        if allowed_variants is not None and variant not in allowed_variants:
+            continue
+
+        validation_csv = run_dir / "logs" / "validation_metrics.csv"
+        training_csv = run_dir / "logs" / "training_metrics.csv"
+        episodes: list[int] = []
+        values: list[float] = []
+
+        if validation_csv.exists():
+            with validation_csv.open("r", newline="", encoding="utf-8") as handle:
+                for row in csv.DictReader(handle):
+                    episode = safe_int(row.get("episode"))
+                    if episode is None:
+                        continue
+
+                    episodes.append(episode)
+                    values.append(safe_float(row.get(validation_metric_column)))
+        elif training_csv.exists():
+            with training_csv.open("r", newline="", encoding="utf-8") as handle:
+                for row in csv.DictReader(handle):
+                    episode = safe_int(row.get("episode"))
+                    if episode is None:
+                        continue
+
+                    eval_mean_return = safe_float(row.get("eval_mean_return"))
+                    eval_mean_score = safe_float(row.get("eval_mean_score"))
+                    eval_mean_length = safe_float(row.get("eval_mean_length"))
+                    if (
+                        eval_mean_return == 0.0
+                        and eval_mean_score == 0.0
+                        and eval_mean_length == 0.0
+                    ):
+                        continue
+
+                    episodes.append(episode)
+                    values.append(safe_float(row.get(legacy_training_column)))
+
+        if episodes:
+            grouped_series[variant].append(
+                TrainingSeries(
+                    variant=variant,
+                    run_name=run_name,
+                    seed=seed,
+                    episodes=episodes,
+                    values=values,
+                )
+            )
+
+    for variant_runs in grouped_series.values():
+        variant_runs.sort(key=lambda item: (item.seed is None, item.seed))
+
+    return dict(grouped_series)
+
+
 def group_summaries_by_variant(
     summaries: list[RunSummary],
 ) -> dict[str, list[RunSummary]]:
@@ -601,6 +687,70 @@ def plot_learning_curves(
     plt.close(fig)
 
 
+def plot_validation_learning_curves(
+    aggregated_curves: dict[str, dict[str, list[float] | int]],
+    output_path: Path,
+    color_map: dict[str, str],
+) -> None:
+    """Plot held-out validation score during training.
+
+    This is a stronger checkpoint-selection view than raw training episode
+    score because it removes exploration noise and evaluates on fixed terrain
+    seeds that are not used for environment interaction in that episode.
+    """
+
+    fig, ax = plt.subplots(figsize=(11, 6.5))
+
+    for variant in ordered_variant_names(aggregated_curves):
+        curve = aggregated_curves[variant]
+        episodes = list(curve["episodes"])
+        mean_values = list(curve["mean"])
+        std_values = list(curve["std"])
+
+        lower_band = [mean_value - std_value for mean_value, std_value in zip(mean_values, std_values)]
+        upper_band = [mean_value + std_value for mean_value, std_value in zip(mean_values, std_values)]
+        display_name = pretty_variant_name(variant)
+        color = color_map[variant]
+
+        ax.plot(
+            episodes,
+            mean_values,
+            color=color,
+            linewidth=2.2,
+            marker="o",
+            markersize=4.5,
+            label=f"{display_name} (n={curve['num_runs']})",
+        )
+        ax.fill_between(
+            episodes,
+            lower_band,
+            upper_band,
+            color=color,
+            alpha=0.18,
+        )
+
+    ax.set_title("Validation Learning Curves: Mean Held-Out Score Across Training Seeds", fontsize=14, fontweight="bold")
+    ax.set_xlabel("Training episode")
+    ax.set_ylabel("Validation mean score")
+    ax.grid(axis="both", linestyle="--", alpha=0.3)
+    ax.set_axisbelow(True)
+    ax.legend(frameon=False)
+    ax.text(
+        0.99,
+        0.02,
+        "Validation uses fixed held-out seeds with exploration disabled",
+        transform=ax.transAxes,
+        ha="right",
+        va="bottom",
+        fontsize=9,
+        color="#374151",
+    )
+
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+
+
 def plot_score_boxplot(
     grouped_runs: dict[str, list[RunSummary]],
     output_path: Path,
@@ -695,6 +845,11 @@ def main() -> None:
         metric_name="episode_score",
         allowed_variants=allowed_variants,
     )
+    validation_series = load_validation_series(
+        runs_dir=args.runs_dir,
+        metric_name="mean_score",
+        allowed_variants=allowed_variants,
+    )
     grouped_runs = group_summaries_by_variant(summaries)
     aggregate_rows = build_aggregate_rows(grouped_runs)
     variant_names = ordered_variant_names(grouped_runs)
@@ -702,6 +857,10 @@ def main() -> None:
     aggregated_learning_curves = aggregate_training_series(
         grouped_series=training_series,
         smoothing_window=args.smoothing_window,
+    )
+    aggregated_validation_curves = aggregate_training_series(
+        grouped_series=validation_series,
+        smoothing_window=1,
     )
 
     print_run_warnings(
@@ -718,6 +877,12 @@ def main() -> None:
         color_map=color_map,
         smoothing_window=args.smoothing_window,
     )
+    if aggregated_validation_curves:
+        plot_validation_learning_curves(
+            aggregated_curves=aggregated_validation_curves,
+            output_path=args.plots_dir / "plot_6_validation_learning_curves_mean_score.png",
+            color_map=color_map,
+        )
     plot_bar_chart(
         aggregate_rows=aggregate_rows,
         metric_key="mean_score",
@@ -753,6 +918,8 @@ def main() -> None:
 
     print("Generated plot files:", flush=True)
     print(f"- {args.plots_dir / 'plot_1_learning_curves_mean_episode_score.png'}", flush=True)
+    if aggregated_validation_curves:
+        print(f"- {args.plots_dir / 'plot_6_validation_learning_curves_mean_score.png'}", flush=True)
     print(f"- {args.plots_dir / 'plot_2_final_score_comparison_bar_chart.png'}", flush=True)
     print(f"- {args.plots_dir / 'plot_3_final_return_comparison_bar_chart.png'}", flush=True)
     print(f"- {args.plots_dir / 'plot_4_final_episode_length_comparison_bar_chart.png'}", flush=True)

@@ -31,7 +31,7 @@ class DQNConfig:
     train_frequency: int = 4
     target_update_frequency: int = 1_000
     evaluation_frequency: int = 25
-    evaluation_episodes: int = 5
+    evaluation_episodes: int = 10 # Increase to capture better validation during training
     validation_seed_start: int = 1_000
     final_evaluation_episodes: int = 30
     final_evaluation_seed_start: int = 10_000
@@ -53,7 +53,7 @@ class DQNConfig:
     seed: int = 7
     project_root: Path = field(default_factory=lambda: Path(__file__).resolve().parents[1])
     run_name: str = "momentum_sensitive_dqn_seed7" # Change this for the right variation and seed
-    agent_variant: str = "momentum_sensitive" # "vanilla", "momentum_sensitive", or alias labels such as "double_dqn"
+    agent_variant: str = "momentum_sensitive" # "vanilla", "momentum_sensitive"
 
     # My variation settings: small reward shaping terms for smoother forward motion.
     momentum_bonus_scale: float = 0.05
