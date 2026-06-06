@@ -138,7 +138,7 @@ For final report tables:
 
 ---
 
-## Research Flow And Why DoubleDQN Is Next
+## Research Flow And Next Reward Fix
 
 Use this section to keep the experiment story consistent in the report.
 
@@ -146,8 +146,10 @@ Planned progression:
 1. Start with `vanilla_dqn` as the baseline.
 2. Try `momentum_sensitive_dqn` as a reward-shaping variation on top of the same core DQN update.
 3. After comparing those two, note the deeper mathematical bottleneck in standard DQN itself.
-4. Try plain `double_dqn` next to address that bottleneck directly.
+4. Try plain `double_dqn` to address that bottleneck directly.
 5. Combine the DoubleDQN target rule with the custom momentum-sensitive reward shaping to produce `momentum_sensitive_double_dqn`.
+6. Because `momentum_sensitive_dqn` is still the best completed method by mean score and return, apply the new anti-stall reward modification there first as `antistall_momentum_dqn`.
+7. If `antistall_momentum_dqn` improves stuck recovery, then test the same reward idea with DoubleDQN as `antistall_momentum_double_dqn`.
 
 Reason for adding `double_dqn`:
 - Both `vanilla_dqn` and `momentum_sensitive_dqn` still rely on the standard DQN target.
@@ -157,12 +159,14 @@ Reason for adding `double_dqn`:
 - `double_dqn` separates those two jobs:
 - the online network selects the action
 - the target network evaluates the selected action
-- This makes `double_dqn` the clean next experiment because it tests whether the instability comes partly from the DQN target rule itself, not only from reward design.
+- This made `double_dqn` the clean next experiment at that stage because it tested whether the instability came partly from the DQN target rule itself, not only from reward design.
 
 Reporting takeaway:
 - `momentum_sensitive_dqn` answers: "What happens if I keep DQN but change the learning reward?"
 - `double_dqn` answers: "What happens if I keep the task mostly the same but fix the overestimation bias in the update rule?"
 - `momentum_sensitive_double_dqn` answers: "What happens if I combine the algorithmic fix with my custom reward design?"
+- `antistall_momentum_dqn` answers: "What happens if I keep the best reward-shaped DQN base and directly punish the stuck/no-recovery behavior?"
+- `antistall_momentum_double_dqn` should only be used later to answer: "Does the same anti-stall reward also help when the target rule is DoubleDQN?"
 
 ---
 
@@ -419,7 +423,8 @@ Record each method here before running it.
 | EXP-002 | momentum_sensitive_dqn | Reward shaping for smoother forward motion and less unstable flipping/balancing | Yes | 5 | Completed |
 | EXP-003 | vanilla_double_dqn | Replace the standard DQN max target with decoupled online-action selection and target-network evaluation | Yes | 5 | Completed |
 | EXP-004 | momentum_sensitive_double_dqn | DoubleDQN target rule plus the custom Momentum-Sensitive reward function | Yes | 5 | Completed |
-| EXP-005 | anti_stall_momentum_double_dqn | Next reward modification: strongly penalize being stuck while not using gas or trying to recover | Design pending | 5 | Recommended next |
+| EXP-005 | antistall_momentum_dqn | Next reward modification applied to the best current base method: strongly penalize being stuck while not using gas or trying to recover | Code implemented | 5 | Recommended next |
+| EXP-006 | antistall_momentum_double_dqn | Later follow-up: apply the same anti-stall reward idea on top of Momentum-Sensitive DoubleDQN if EXP-005 improves stuck recovery | Design pending | 5 | Future follow-up |
 
 ---
 
@@ -477,7 +482,8 @@ After all seeds for one method are complete, summarize them here.
 | EXP-002 | momentum_sensitive_dqn | 5 | 529.3266 | 4108.3495 | 64.0964 | 2322.0222 | 412639.5196 | 642.3702 | 2248.0067 | 200894.7540 | 448.2128 |
 | EXP-003 | vanilla_double_dqn | 5 | 482.4200 | 14733.2756 | 121.3807 | 1786.6174 | 1615135.2012 | 1270.8797 | 2202.6200 | 90144.3832 | 300.2405 |
 | EXP-004 | momentum_sensitive_double_dqn | 5 | 516.5533 | 3368.5498 | 58.0392 | 2017.7562 | 927239.0041 | 962.9325 | 2380.0133 | 209356.5058 | 457.5549 |
-| EXP-005 | anti_stall_momentum_double_dqn | 5 |  |  |  |  |  |  |  |  |  |
+| EXP-005 | antistall_momentum_dqn | 5 |  |  |  |  |  |  |  |  |  |
+| EXP-006 | antistall_momentum_double_dqn | 5 |  |  |  |  |  |  |  |  |  |
 
 Interpretation:
 - higher mean score is better on average
@@ -656,7 +662,7 @@ Method description:
 Config values:
 - `run_name` pattern: momentum_sensitive_double_dqn_seed_(num_seed)
 - `seed` list: 42, 123, 999, 2026, 7
-- `agent_variant`: momentum_sensitive_double_dqn
+- `agent_variant`: momentum_sensitive
 - `td_target_mode`: double_dqn
 - `num_episodes`: 300
 - `max_episode_steps`: 3000
@@ -700,26 +706,29 @@ Interpretation to reuse in the report:
 - The main remaining weakness is no longer only flipping or early crash behavior. The repeated failure mode is stalled survival: the agent gets stuck, does not increase gas enough, and does not actively solve the situation.
 
 
-### EXP-005: Anti-Stall Momentum DoubleDQN
+### EXP-005: Anti-Stall Momentum DQN
 
 Method description:
-- This is the recommended next experiment after `momentum_sensitive_double_dqn`.
-- Keep the DoubleDQN target rule and the momentum-sensitive reward terms.
+- This is the recommended next experiment because `momentum_sensitive_dqn` is still the strongest completed method by final mean score and final mean return.
+- Keep the standard DQN target rule and the momentum-sensitive reward terms.
 - Add a stronger stuck-recovery reward modification that penalizes long periods of little or no progress, especially when the selected action is idle or reverse instead of gas.
+- This isolates the reward change more cleanly than applying it to DoubleDQN first. If the result improves, the same anti-stall idea can later be combined with DoubleDQN.
 
 Planned config values:
-- `run_name` pattern: anti_stall_momentum_double_dqn_seed_(num_seed)
+- `run_name` pattern: antistall_momentum_dqn_seed_(num_seed)
 - `seed` list: 42, 123, 999, 2026, 7
-- `agent_variant`: anti_stall_momentum_double_dqn or another clearly named new variant
-- `td_target_mode`: double_dqn
-- base reward-shaping hyperparameters: same as `momentum_sensitive_double_dqn`
-- new stuck-recovery settings to tune:
-  - `anti_stall_patience`: how many low-progress steps before the strong penalty begins
-  - `anti_stall_progress_threshold`: minimum progress needed to count as not stuck
-  - `anti_stall_idle_penalty`: extra penalty when stuck and action is idle (`0`)
-  - `anti_stall_reverse_penalty`: extra penalty when stuck and action is reverse (`2`)
-  - `anti_stall_gas_recovery_bonus`: small bonus when stuck and action is gas (`1`) and progress improves soon after
-  - `anti_stall_penalty_cap`: cap the penalty so the reward does not become too extreme
+- `agent_variant`: antistall_momentum
+- `td_target_mode`: dqn
+- base reward-shaping hyperparameters: same as `momentum_sensitive_dqn`
+- new stuck-recovery settings implemented in `configs.py`:
+  - `anti_stall_patience`: `20` low-progress steps before the stronger penalty begins
+  - `anti_stall_progress_threshold`: `0.01` minimum progress needed to count as not stuck
+  - `anti_stall_idle_penalty`: `0.08` extra penalty when stuck and action is idle (`0`)
+  - `anti_stall_reverse_penalty`: `0.05` extra penalty when stuck and action is reverse (`2`)
+  - `anti_stall_gas_penalty`: `0.005` very small penalty when stuck and gas still fails to create progress
+  - `anti_stall_penalty_growth`: `0.002` gradual penalty increase during long stuck streaks
+  - `anti_stall_penalty_cap`: `0.25` cap so the reward does not become too extreme
+  - `anti_stall_gas_recovery_bonus`: `0.03` small bonus when the agent was stuck and gas (`1`) actually creates progress
 
 Design caution:
 - Do not simply reward gas every time. On steep terrain, the car sometimes needs braking or reversing to rebalance.
@@ -730,6 +739,7 @@ Design caution:
 Expected result:
 - This variation should reduce the common behavior where the agent survives but sits stuck without improving.
 - The key metric to watch is not only final mean score. Also compare mean length against score and inspect whether long episodes still contain stalled behavior.
+- If this improves `momentum_sensitive_dqn`, then EXP-006 can test `antistall_momentum_double_dqn` to see whether the anti-stall reward and DoubleDQN target rule work better together.
 
 ---
 
@@ -788,11 +798,20 @@ Use this section for qualitative observations from `watch_checkpoint.py`.
 - Report caution:
   - The high mean episode length can make the method look strong, but long survival can include stuck behavior rather than active terrain solving.
 
-### anti_stall_momentum_double_dqn
+### antistall_momentum_dqn
 
 - This is the recommended next variation.
+- Reason for using this base first: `momentum_sensitive_dqn` has the best completed mean score and mean return, so the anti-stall reward should be tested there before adding another algorithmic change.
 - Main behavior target: reduce stuck states where the agent is not trying to increase gas.
 - The reward should strongly penalize repeated no-progress steps when the agent keeps choosing idle or reverse, and only give a small recovery bonus for gas when it actually helps progress.
+- Current implementation note:
+  - Code mode is available in `hcr_dqn` as `agent_variant = antistall_momentum`.
+  - Default run name pattern is `antistall_momentum_dqn_seed7`.
+
+### antistall_momentum_double_dqn
+
+- This should be treated as a later follow-up, not the immediate next experiment.
+- Only run this if `antistall_momentum_dqn` improves stuck recovery, because then it is worth testing whether the same reward change also benefits the DoubleDQN target rule.
 
 ---
 
@@ -813,6 +832,7 @@ Final summary:
 - `momentum_sensitive_double_dqn` is the second-best method by mean score (`516.55`) and has the lowest final-score standard deviation (`58.04`), so combining DoubleDQN with the custom reward improved consistency.
 - The combined method has the longest mean episode length (`2380.01`), but the visual behavior shows why length alone is not enough: the agent can survive while getting stuck and not doing anything useful.
 - The main remaining problem is stalled recovery. The speed is generally good, but consistency is not there, and agents can still get stuck with little to no improvement.
-- The recommended next experiment is `anti_stall_momentum_double_dqn`: keep the DoubleDQN + momentum reward base, but add a stronger penalty for repeated no-progress steps when the agent is idle/reverse or not attempting gas-based recovery.
+- The recommended next experiment is `antistall_momentum_dqn`: keep the best-performing `momentum_sensitive_dqn` base, but add a stronger penalty for repeated no-progress steps when the agent is idle/reverse or not attempting gas-based recovery.
+- The later follow-up is `antistall_momentum_double_dqn`, but it should come after EXP-005 so the reward modification can be evaluated cleanly before mixing it with the DoubleDQN target rule.
 
 ---

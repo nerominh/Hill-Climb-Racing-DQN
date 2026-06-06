@@ -276,14 +276,17 @@ How the code now exposes this:
 1. `agent_variant` controls the reward-style family:
 - `vanilla`
 - `momentum_sensitive`
+- `antistall_momentum`
 2. `td_target_mode` controls the Bellman target rule:
 - `dqn`
 - `double_dqn`
-3. Because those two choices are separated, the repository can now represent four combinations:
+3. Because those two choices are separated, the repository can now represent six combinations:
 - vanilla DQN
 - vanilla DoubleDQN
 - momentum-sensitive DQN
 - momentum-sensitive DoubleDQN
+- anti-stall momentum DQN
+- anti-stall momentum DoubleDQN
 
 Why this matters conceptually:
 - reward shaping changes what the agent is encouraged to do

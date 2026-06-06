@@ -130,26 +130,21 @@ def print_episode_summary(
 
 
 def resolve_agent_class(config: DQNConfig):
-    # Support both the existing reward-shaping variants and a few friendly
-    # alias labels for DoubleDQN without changing the training entry point.
-    if config.agent_variant == "double_dqn":
-        config.td_target_mode = "double_dqn"
-        return DQNAgent
-
-    if config.agent_variant == "momentum_sensitive_double_dqn":
-        config.td_target_mode = "double_dqn"
-        return MomentumSensitiveDQNAgent
-
+    # agent_variant only chooses the reward style.
+    # td_target_mode separately chooses whether the Bellman target is DQN or DoubleDQN.
     if config.agent_variant == "vanilla":
         return DQNAgent
 
     if config.agent_variant == "momentum_sensitive":
         return MomentumSensitiveDQNAgent
 
-    if config.agent_variant in {"anti_stall_momentum", "anti_stall_momentum_dqn"}:
+    if config.agent_variant == "antistall_momentum":
         return AntiStallMomentumDQNAgent
 
-    raise ValueError(f"Unknown agent_variant: {config.agent_variant}")
+    raise ValueError(
+        f"Unknown agent_variant: {config.agent_variant}. "
+        "Expected 'vanilla', 'momentum_sensitive', or 'antistall_momentum'."
+    )
 
 
 def train(config: DQNConfig | None = None) -> Path:

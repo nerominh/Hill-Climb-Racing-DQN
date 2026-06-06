@@ -42,7 +42,7 @@ class DQNConfig:
     batch_size: int = 64
     replay_buffer_capacity: int = 50_000
     hidden_sizes: tuple[int, int] = (128, 128)
-    td_target_mode: str = "dqn"  # "dqn" or "double_dqn"
+    td_target_mode: str = "dqn"  # Choose only the target rule: "dqn" or "double_dqn"
 
     # Exploration schedule.
     epsilon_start: float = 1.0
@@ -52,8 +52,8 @@ class DQNConfig:
     # Reproducibility and output structure.
     seed: int = 7
     project_root: Path = field(default_factory=lambda: Path(__file__).resolve().parents[1])
-    run_name: str = "anti_stall_momentum_dqn_seed7" # Change this for the right variation and seed
-    agent_variant: str = "anti_stall_momentum" # "vanilla", "momentum_sensitive", "anti_stall_momentum", "double_dqn", "momentum_sensitive_double_dqn"
+    run_name: str = "antistall_momentum_dqn_seed7" # Change this for the right variation and seed
+    agent_variant: str = "antistall_momentum" # Choose only the reward style: "vanilla", "momentum_sensitive", or "antistall_momentum"
 
     # My variation settings: small reward shaping terms for smoother forward motion.
     momentum_bonus_scale: float = 0.05

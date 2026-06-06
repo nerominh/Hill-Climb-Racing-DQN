@@ -347,12 +347,26 @@ To change behavior, edit the fields in [`hcr_dqn/configs.py`](./hcr_dqn/configs.
 
 - `run_name`
 - `agent_variant`
+- `td_target_mode`
 - `seed`
 - `reward_function`
 - `reward_type`
 - `action_space`
 - `num_episodes`
 - `evaluation_frequency`
+
+Use `agent_variant` only for the reward/behavior style:
+
+- `vanilla`
+- `momentum_sensitive`
+- `antistall_momentum`
+
+Use `td_target_mode` only for the Bellman target rule:
+
+- `dqn`
+- `double_dqn`
+
+For example, `agent_variant = "momentum_sensitive"` with `td_target_mode = "double_dqn"` gives the momentum-sensitive reward with the DoubleDQN target update.
 
 If you want fully scriptable experiment runs later, a natural next improvement would be to add an `argparse` interface to `train_dqn.py` so run names, seeds, and reward settings can be changed from the command line.
 
