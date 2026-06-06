@@ -1,2 +1,2 @@
 timestamp,mode,run_name,checkpoint_path,evaluation_episodes,first_seed,last_seed,mean_return,std_return,mean_score,std_score,mean_length,std_length
-2026-05-31T14:55:02,final,vanilla_dqn_seed42,C:\Users\ADMIN\Documents\SPRING 2026\Artificial Intelligent\Hill Climb Racing AI\runs\vanilla_dqn_seed42\checkpoints\best_model.pt,30,10000,10029,1320.1593,417.0092,279.1667,82.6745,1175.6,336.9881
+2026-06-04T23:09:23,final,vanilla_dqn_seed42,/home/sail/minh/Hill-Climb-Racing-DQN/runs/vanilla_dqn_seed42/checkpoints/best_model.pt,30,10000,10029,2131.1302,1854.5432,438.6333,99.9725,2804.6333,426.8843

@@ -218,6 +218,9 @@ class MomentumSensitiveDQNAgent(DQNAgent):
         self.forward_streak = 0
         self.stall_steps = 0
         self.oscillation_steps = 0
+        self.last_motion_progress = 0.0
+        self.last_progress_delta = 0.0
+        self.last_x_delta = 0.0
 
     def reset_episode_reward_state(self) -> None:
         # Reset the custom motion tracking at the start of each episode
@@ -226,6 +229,9 @@ class MomentumSensitiveDQNAgent(DQNAgent):
         self.forward_streak = 0
         self.stall_steps = 0
         self.oscillation_steps = 0
+        self.last_motion_progress = 0.0
+        self.last_progress_delta = 0.0
+        self.last_x_delta = 0.0
 
     def shape_reward(
         self,
@@ -262,6 +268,10 @@ class MomentumSensitiveDQNAgent(DQNAgent):
 
         # A forward step means the car actually moved forward or improved the game score.
         motion_progress = max(progress_delta, x_delta)
+        self.last_motion_progress = motion_progress
+        self.last_progress_delta = progress_delta
+        self.last_x_delta = x_delta
+
         is_forward_step = motion_progress > 0.0
         if is_forward_step:
             self.forward_streak += 1
@@ -305,4 +315,90 @@ class MomentumSensitiveDQNAgent(DQNAgent):
 
         self.previous_score = current_score
         self.previous_action = int(action)
+        return shaped_reward
+
+
+# My variation: Anti-Stall Momentum DQN
+# This builds directly on the momentum-sensitive reward, but adds a stronger
+# penalty when the car is stuck and the agent keeps choosing idle/reverse instead of trying to recover.
+class AntiStallMomentumDQNAgent(MomentumSensitiveDQNAgent):
+    # Momentum-sensitive DQN with extra pressure against doing nothing while stuck
+
+    def __init__(self, state_dim: int, action_dim: int, config) -> None:
+        # Start from the full momentum-sensitive setup first, then add the anti-stall settings.
+        super().__init__(state_dim, action_dim, config)
+
+        # Discrete action meanings from the environment:
+        # 0 = idle, 1 = gas, 2 = reverse.
+        self.gas_action = 1
+        self.idle_action = 0
+        self.reverse_action = 2
+
+        # These values are still reward shaping terms, so they should be strong enough to matter,
+        # but not so huge that the agent forgets the original distance reward.
+        self.anti_stall_patience = getattr(config, "anti_stall_patience", 20)
+        self.anti_stall_progress_threshold = getattr(config, "anti_stall_progress_threshold", 0.01)
+        self.anti_stall_idle_penalty = getattr(config, "anti_stall_idle_penalty", 0.08)
+        self.anti_stall_reverse_penalty = getattr(config, "anti_stall_reverse_penalty", 0.05)
+        self.anti_stall_gas_penalty = getattr(config, "anti_stall_gas_penalty", 0.005)
+        self.anti_stall_penalty_growth = getattr(config, "anti_stall_penalty_growth", 0.002)
+        self.anti_stall_penalty_cap = getattr(config, "anti_stall_penalty_cap", 0.25)
+        self.anti_stall_gas_recovery_bonus = getattr(config, "anti_stall_gas_recovery_bonus", 0.03)
+
+        # Separate counter from momentum_stall_steps because here I care about low progress,
+        # not only completely zero or negative progress.
+        self.anti_stall_steps = 0
+
+    def reset_episode_reward_state(self) -> None:
+        # Reset both the momentum-sensitive tracking and the anti-stall tracking
+        super().reset_episode_reward_state()
+        self.anti_stall_steps = 0
+
+    def shape_reward(
+        self,
+        reward: float,
+        action: int,
+        info: dict | None = None,
+        state: np.ndarray | None = None,
+        next_state: np.ndarray | None = None,
+    ) -> float:
+        # First apply the original momentum-sensitive reward shaping.
+        shaped_reward = super().shape_reward(reward, action, info, state, next_state)
+
+        action = int(action)
+        motion_progress = self.last_motion_progress
+        was_anti_stalled = self.anti_stall_steps >= self.anti_stall_patience
+
+        # Low progress for many steps means the car is probably stuck on terrain.
+        if motion_progress <= self.anti_stall_progress_threshold:
+            self.anti_stall_steps += 1
+        else:
+            self.anti_stall_steps = 0
+
+            # Only reward gas recovery if the agent was actually stuck before and gas helped it move.
+            if was_anti_stalled and action == self.gas_action:
+                clipped_progress = min(max(motion_progress, 0.0), self.progress_clip)
+                shaped_reward += self.anti_stall_gas_recovery_bonus * clipped_progress
+
+            return shaped_reward
+
+        if self.anti_stall_steps < self.anti_stall_patience:
+            return shaped_reward
+
+        # Once stuck, idle is the main behavior I want to punish.
+        # Reverse is punished too, but slightly less because sometimes it can help reposition the car.
+        if action == self.idle_action:
+            penalty = self.anti_stall_idle_penalty
+        elif action == self.reverse_action:
+            penalty = self.anti_stall_reverse_penalty
+        elif action == self.gas_action:
+            penalty = self.anti_stall_gas_penalty
+        else:
+            penalty = self.anti_stall_idle_penalty
+
+        # The longer the agent stays stuck, the more the pressure increases, up to a cap.
+        extra_stuck_steps = self.anti_stall_steps - self.anti_stall_patience + 1
+        penalty += self.anti_stall_penalty_growth * extra_stuck_steps
+        shaped_reward -= min(penalty, self.anti_stall_penalty_cap)
+
         return shaped_reward

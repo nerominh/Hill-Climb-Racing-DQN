@@ -23,13 +23,13 @@ except ModuleNotFoundError as exc:  # pragma: no cover - depends on local setup
 
 if __package__ in (None, ""):  # pragma: no cover - convenience for direct script usage
     from configs import DQNConfig # Modification from the configs.py will automatically be reflected here --> I can change the training settings in one place and have them apply to both training and evaluation
-    from dqn_agent import DQNAgent, MomentumSensitiveDQNAgent
+    from dqn_agent import AntiStallMomentumDQNAgent, DQNAgent, MomentumSensitiveDQNAgent
     from env_wrappers import make_flat_env
     from evaluate_dqn import evaluate_agent
     from replay_buffer import ReplayBuffer
 else:
     from .configs import DQNConfig
-    from .dqn_agent import DQNAgent, MomentumSensitiveDQNAgent
+    from .dqn_agent import AntiStallMomentumDQNAgent, DQNAgent, MomentumSensitiveDQNAgent
     from .env_wrappers import make_flat_env
     from .evaluate_dqn import evaluate_agent
     from .replay_buffer import ReplayBuffer
@@ -145,6 +145,9 @@ def resolve_agent_class(config: DQNConfig):
 
     if config.agent_variant == "momentum_sensitive":
         return MomentumSensitiveDQNAgent
+
+    if config.agent_variant in {"anti_stall_momentum", "anti_stall_momentum_dqn"}:
+        return AntiStallMomentumDQNAgent
 
     raise ValueError(f"Unknown agent_variant: {config.agent_variant}")
 

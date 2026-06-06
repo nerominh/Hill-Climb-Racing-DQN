@@ -1,2 +1,2 @@
 timestamp,mode,run_name,checkpoint_path,evaluation_episodes,first_seed,last_seed,mean_return,std_return,mean_score,std_score,mean_length,std_length
-2026-06-03T23:34:55,final,vanilla_double_dqn_seed123,/home/sail/minh/Hill-Climb-Racing-DQN/runs/vanilla_double_dqn_seed123/checkpoints/best_model.pt,30,10000,10029,2447.553,821.9519,553.8333,155.9966,2013.2,641.4727
+2026-06-04T17:31:08,final,vanilla_double_dqn_seed123,/home/sail/minh/Hill-Climb-Racing-DQN/runs/vanilla_double_dqn_seed123/checkpoints/best_model.pt,30,10000,10029,2330.1108,858.7722,501.4000,166.0806,2007.4333,708.7678

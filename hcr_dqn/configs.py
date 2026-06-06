@@ -52,8 +52,8 @@ class DQNConfig:
     # Reproducibility and output structure.
     seed: int = 7
     project_root: Path = field(default_factory=lambda: Path(__file__).resolve().parents[1])
-    run_name: str = "momentum_sensitive_dqn_seed7" # Change this for the right variation and seed
-    agent_variant: str = "momentum_sensitive" # "vanilla", "momentum_sensitive"
+    run_name: str = "anti_stall_momentum_dqn_seed7" # Change this for the right variation and seed
+    agent_variant: str = "anti_stall_momentum" # "vanilla", "momentum_sensitive", "anti_stall_momentum", "double_dqn", "momentum_sensitive_double_dqn"
 
     # My variation settings: small reward shaping terms for smoother forward motion.
     momentum_bonus_scale: float = 0.05
@@ -66,6 +66,16 @@ class DQNConfig:
     momentum_angle_penalty_scale: float = 0.001
     momentum_air_penalty: float = 0.01
     momentum_back_wheel_penalty: float = 0.005
+
+    # My variation settings: stronger penalty when the agent is stuck and keeps doing idle/reverse.
+    anti_stall_patience: int = 20
+    anti_stall_progress_threshold: float = 0.01
+    anti_stall_idle_penalty: float = 0.08
+    anti_stall_reverse_penalty: float = 0.05
+    anti_stall_gas_penalty: float = 0.005
+    anti_stall_penalty_growth: float = 0.002
+    anti_stall_penalty_cap: float = 0.25
+    anti_stall_gas_recovery_bonus: float = 0.03
 
     @classmethod
     def from_dict(cls, values: Mapping[str, object]) -> "DQNConfig":
