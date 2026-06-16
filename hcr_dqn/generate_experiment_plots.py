@@ -1,6 +1,6 @@
-"""Generate report-ready plots from the saved final evaluation summaries.
+"""AI work: Generate report-ready plots from the saved final evaluation summaries.
 
-This script is intentionally focused on the data you already have:
+This script is intentionally focused on the data already have:
 - one run folder per seed
 - one evaluation summary CSV inside each run
 - multiple runs belonging to the same variant
@@ -22,6 +22,7 @@ from statistics import mean, stdev, variance
 
 try:
     import matplotlib.pyplot as plt
+    import matplotlib.patheffects as path_effects
 except ModuleNotFoundError as exc:  # pragma: no cover - depends on local setup
     raise ModuleNotFoundError(
         "matplotlib is required for plotting. Install matplotlib in your "
@@ -33,13 +34,39 @@ RUN_NAME_PATTERN = re.compile(r"^(?P<variant>.+)_seed(?P<seed>-?\d+)$")
 
 # A small fixed palette keeps the plots consistent across reruns.
 PLOT_COLORS = [
-    "#1F4E79",
-    "#D97706",
-    "#2F855A",
-    "#B91C1C",
-    "#6B7280",
-    "#0F766E",
+    "#005AB5",
+    "#DC3220",
+    "#009E73",
+    "#CC79A7",
+    "#E69F00",
+    "#4B5563",
 ]
+
+PLOT_LINE_STYLES = ["solid", "solid", "solid", "dashed", "solid", "dashed"]
+
+TITLE_FONT_SIZE = 18
+AXIS_LABEL_FONT_SIZE = 16
+TICK_LABEL_FONT_SIZE = 12
+LEGEND_FONT_SIZE = 11
+ANNOTATION_FONT_SIZE = 11
+
+SHORT_VARIANT_NAMES = {
+    "vanilla_dqn": "Vanilla DQN",
+    "vanilla_double_dqn": "Vanilla Double",
+    "momentum_sensitive_dqn": "Momentum DQN",
+    "momentum_sensitive_double_dqn": "Momentum Double",
+    "antistall_momentum_dqn": "Anti-stall DQN",
+    "antistall_momentum_double_dqn": "Anti-stall Double",
+}
+
+AXIS_VARIANT_NAMES = {
+    "vanilla_dqn": "Vanilla\nDQN",
+    "vanilla_double_dqn": "Vanilla\nDouble",
+    "momentum_sensitive_dqn": "Momentum\nDQN",
+    "momentum_sensitive_double_dqn": "Momentum\nDouble",
+    "antistall_momentum_dqn": "Anti-stall\nDQN",
+    "antistall_momentum_double_dqn": "Anti-stall\nDouble",
+}
 
 
 @dataclass
@@ -103,7 +130,7 @@ def parse_args() -> argparse.Namespace:
         "--expected-runs-per-variant",
         type=int,
         default=5,
-        help="Used only for warnings so you notice missing seed runs.",
+        help="Used only for warnings for missing seed runs.",
     )
     parser.add_argument(
         "--variants",
@@ -149,7 +176,7 @@ def safe_float(value: str | None) -> float:
 def choose_latest_summary_row(summary_csv: Path, mode: str) -> dict[str, str] | None:
     """Read one run's CSV and keep the latest row for the chosen mode.
 
-    The file can contain multiple appended evaluation rows if you reran the
+    The file can contain multiple appended evaluation rows if reran the
     evaluation command. In that case we want the newest matching entry.
     """
 
@@ -281,92 +308,6 @@ def load_training_series(
     return dict(grouped_series)
 
 
-def load_validation_series(
-    runs_dir: Path,
-    metric_name: str,
-    allowed_variants: set[str] | None = None,
-) -> dict[str, list[TrainingSeries]]:
-    """Read validation score traces for checkpoint-selection analysis.
-
-    Newer runs may have a dedicated validation_metrics.csv file. Older runs can
-    still be supported by falling back to the validation columns already stored
-    in training_metrics.csv.
-    """
-
-    if not runs_dir.exists():
-        raise FileNotFoundError(
-            f"Could not find runs directory at {runs_dir}. "
-            "Train the models first so validation logs exist."
-        )
-
-    validation_metric_column = metric_name
-    legacy_training_column_map = {
-        "mean_score": "eval_mean_score",
-        "mean_return": "eval_mean_return",
-        "mean_length": "eval_mean_length",
-    }
-    legacy_training_column = legacy_training_column_map.get(metric_name, metric_name)
-
-    grouped_series: dict[str, list[TrainingSeries]] = defaultdict(list)
-
-    for run_dir in sorted(child for child in runs_dir.iterdir() if child.is_dir()):
-        run_name = run_dir.name
-        variant, seed = infer_variant_and_seed(run_name)
-
-        if allowed_variants is not None and variant not in allowed_variants:
-            continue
-
-        validation_csv = run_dir / "logs" / "validation_metrics.csv"
-        training_csv = run_dir / "logs" / "training_metrics.csv"
-        episodes: list[int] = []
-        values: list[float] = []
-
-        if validation_csv.exists():
-            with validation_csv.open("r", newline="", encoding="utf-8") as handle:
-                for row in csv.DictReader(handle):
-                    episode = safe_int(row.get("episode"))
-                    if episode is None:
-                        continue
-
-                    episodes.append(episode)
-                    values.append(safe_float(row.get(validation_metric_column)))
-        elif training_csv.exists():
-            with training_csv.open("r", newline="", encoding="utf-8") as handle:
-                for row in csv.DictReader(handle):
-                    episode = safe_int(row.get("episode"))
-                    if episode is None:
-                        continue
-
-                    eval_mean_return = safe_float(row.get("eval_mean_return"))
-                    eval_mean_score = safe_float(row.get("eval_mean_score"))
-                    eval_mean_length = safe_float(row.get("eval_mean_length"))
-                    if (
-                        eval_mean_return == 0.0
-                        and eval_mean_score == 0.0
-                        and eval_mean_length == 0.0
-                    ):
-                        continue
-
-                    episodes.append(episode)
-                    values.append(safe_float(row.get(legacy_training_column)))
-
-        if episodes:
-            grouped_series[variant].append(
-                TrainingSeries(
-                    variant=variant,
-                    run_name=run_name,
-                    seed=seed,
-                    episodes=episodes,
-                    values=values,
-                )
-            )
-
-    for variant_runs in grouped_series.values():
-        variant_runs.sort(key=lambda item: (item.seed is None, item.seed))
-
-    return dict(grouped_series)
-
-
 def group_summaries_by_variant(
     summaries: list[RunSummary],
 ) -> dict[str, list[RunSummary]]:
@@ -489,6 +430,9 @@ def ordered_variant_names(grouped_runs: dict[str, list[RunSummary]]) -> list[str
 def pretty_variant_name(variant: str) -> str:
     """Make variant names look like report labels instead of folder names."""
 
+    if variant in SHORT_VARIANT_NAMES:
+        return SHORT_VARIANT_NAMES[variant]
+
     words = variant.split("_")
     pretty_words: list[str] = []
 
@@ -501,10 +445,23 @@ def pretty_variant_name(variant: str) -> str:
     return " ".join(pretty_words)
 
 
+def axis_variant_name(variant: str) -> str:
+    """Use compact multi-line labels on plot axes to avoid overlap."""
+
+    return AXIS_VARIANT_NAMES.get(variant, pretty_variant_name(variant).replace(" ", "\n"))
+
+
 def ensure_plots_dir(plots_dir: Path) -> None:
     """Create the root plots folder once before saving anything."""
 
     plots_dir.mkdir(parents=True, exist_ok=True)
+
+
+def save_plot(fig, output_path: Path) -> None:
+    """Save each report plot as a preview PNG and a LaTeX-friendly PDF."""
+
+    fig.savefig(output_path, dpi=200, bbox_inches="tight")
+    fig.savefig(output_path.with_suffix(".pdf"), bbox_inches="tight")
 
 
 def write_per_run_csv(plots_dir: Path, summaries: list[RunSummary]) -> Path:
@@ -578,6 +535,15 @@ def build_variant_color_map(variant_names: list[str]) -> dict[str, str]:
     return color_map
 
 
+def build_variant_line_style_map(variant_names: list[str]) -> dict[str, str]:
+    """Use line style as a second visual cue when several variants are shown."""
+
+    line_style_map: dict[str, str] = {}
+    for index, variant in enumerate(variant_names):
+        line_style_map[variant] = PLOT_LINE_STYLES[index % len(PLOT_LINE_STYLES)]
+    return line_style_map
+
+
 def plot_bar_chart(
     aggregate_rows: list[dict[str, float | int | str]],
     metric_key: str,
@@ -589,12 +555,14 @@ def plot_bar_chart(
 ) -> None:
     """Create a clean comparison chart with across-seed error bars."""
 
-    display_names = [str(row["display_name"]) for row in aggregate_rows]
+    display_names = [axis_variant_name(str(row["variant"])) for row in aggregate_rows]
     values = [float(row[metric_key]) for row in aggregate_rows]
     errors = [float(row[std_key]) for row in aggregate_rows]
     colors = [color_map[str(row["variant"])] for row in aggregate_rows]
 
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(10.5, 6.2))
+    fig.patch.set_facecolor("#FFFFFF")
+    ax.set_facecolor("#FFFFFF")
     bars = ax.bar(
         display_names,
         values,
@@ -605,11 +573,14 @@ def plot_bar_chart(
         linewidth=1.0,
     )
 
-    ax.set_title(title, fontsize=14, fontweight="bold")
-    ax.set_ylabel(ylabel)
-    ax.set_xlabel("Variant")
-    ax.grid(axis="y", linestyle="--", alpha=0.35)
+    ax.set_title(title, fontsize=TITLE_FONT_SIZE, fontweight="bold")
+    ax.set_ylabel(ylabel, fontsize=AXIS_LABEL_FONT_SIZE)
+    ax.set_xlabel("Variant", fontsize=AXIS_LABEL_FONT_SIZE)
+    ax.grid(axis="y", linestyle="--", alpha=0.25)
     ax.set_axisbelow(True)
+    ax.tick_params(axis="x", labelsize=TICK_LABEL_FONT_SIZE)
+    ax.tick_params(axis="y", labelsize=TICK_LABEL_FONT_SIZE)
+    ax.margins(x=0.04)
 
     for bar, value in zip(bars, values):
         ax.text(
@@ -618,11 +589,11 @@ def plot_bar_chart(
             f"{value:.2f}",
             ha="center",
             va="bottom",
-            fontsize=10,
+            fontsize=ANNOTATION_FONT_SIZE,
         )
 
     fig.tight_layout()
-    fig.savefig(output_path, dpi=200, bbox_inches="tight")
+    save_plot(fig, output_path)
     plt.close(fig)
 
 
@@ -634,40 +605,65 @@ def plot_learning_curves(
 ) -> None:
     """Plot the mean training score over episodes with across-seed std bands."""
 
-    fig, ax = plt.subplots(figsize=(11, 6.5))
+    fig, ax = plt.subplots(figsize=(11.5, 6.8))
+    fig.patch.set_facecolor("#FFFFFF")
+    ax.set_facecolor("#FFFFFF")
+    line_style_map = build_variant_line_style_map(ordered_variant_names(aggregated_curves))
 
     for variant in ordered_variant_names(aggregated_curves):
         curve = aggregated_curves[variant]
         episodes = list(curve["episodes"])
         mean_values = list(curve["mean"])
         std_values = list(curve["std"])
-
-        lower_band = [mean_value - std_value for mean_value, std_value in zip(mean_values, std_values)]
-        upper_band = [mean_value + std_value for mean_value, std_value in zip(mean_values, std_values)]
+        lower_values = [mean_value - std_value for mean_value, std_value in zip(mean_values, std_values)]
+        upper_values = [mean_value + std_value for mean_value, std_value in zip(mean_values, std_values)]
         display_name = pretty_variant_name(variant)
         color = color_map[variant]
 
-        ax.plot(
+        ax.fill_between(
+            episodes,
+            lower_values,
+            upper_values,
+            color=color,
+            alpha=0.16,
+            linewidth=0,
+            zorder=1,
+        )
+        line = ax.plot(
             episodes,
             mean_values,
             color=color,
-            linewidth=2.2,
+            linewidth=3.0,
+            linestyle=line_style_map[variant],
             label=f"{display_name} (n={curve['num_runs']})",
-        )
-        ax.fill_between(
-            episodes,
-            lower_band,
-            upper_band,
-            color=color,
-            alpha=0.18,
+            solid_capstyle="round",
+            zorder=3,
+        )[0]
+        line.set_path_effects(
+            [
+                path_effects.Stroke(linewidth=4.8, foreground="#FFFFFF"),
+                path_effects.Normal(),
+            ]
         )
 
-    ax.set_title("Learning Curves: Mean Episode Score Across Training Seeds", fontsize=14, fontweight="bold")
-    ax.set_xlabel("Episode")
-    ax.set_ylabel("Mean episode score")
-    ax.grid(axis="both", linestyle="--", alpha=0.3)
+    ax.set_title(
+        "Learning Curves: Mean Episode Score Across Training Seeds",
+        fontsize=TITLE_FONT_SIZE,
+        fontweight="bold",
+    )
+    ax.set_xlabel("Episode", fontsize=AXIS_LABEL_FONT_SIZE)
+    ax.set_ylabel("Mean episode score", fontsize=AXIS_LABEL_FONT_SIZE)
+    ax.grid(axis="both", linestyle="--", alpha=0.18)
     ax.set_axisbelow(True)
-    ax.legend(frameon=False)
+    ax.tick_params(axis="both", labelsize=TICK_LABEL_FONT_SIZE)
+    ax.legend(
+        frameon=True,
+        facecolor="#FFFFFF",
+        edgecolor="#D1D5DB",
+        framealpha=0.95,
+        fontsize=LEGEND_FONT_SIZE,
+        ncol=2,
+    )
 
     # The smoothing note helps the reader understand why the curves look calmer
     # than the raw episode-by-episode scores in the CSV files.
@@ -678,80 +674,16 @@ def plot_learning_curves(
         transform=ax.transAxes,
         ha="right",
         va="bottom",
-        fontsize=9,
+        fontsize=ANNOTATION_FONT_SIZE,
         color="#374151",
     )
 
     fig.tight_layout()
-    fig.savefig(output_path, dpi=200, bbox_inches="tight")
+    save_plot(fig, output_path)
     plt.close(fig)
 
 
-def plot_validation_learning_curves(
-    aggregated_curves: dict[str, dict[str, list[float] | int]],
-    output_path: Path,
-    color_map: dict[str, str],
-) -> None:
-    """Plot held-out validation score during training.
-
-    This is a stronger checkpoint-selection view than raw training episode
-    score because it removes exploration noise and evaluates on fixed terrain
-    seeds that are not used for environment interaction in that episode.
-    """
-
-    fig, ax = plt.subplots(figsize=(11, 6.5))
-
-    for variant in ordered_variant_names(aggregated_curves):
-        curve = aggregated_curves[variant]
-        episodes = list(curve["episodes"])
-        mean_values = list(curve["mean"])
-        std_values = list(curve["std"])
-
-        lower_band = [mean_value - std_value for mean_value, std_value in zip(mean_values, std_values)]
-        upper_band = [mean_value + std_value for mean_value, std_value in zip(mean_values, std_values)]
-        display_name = pretty_variant_name(variant)
-        color = color_map[variant]
-
-        ax.plot(
-            episodes,
-            mean_values,
-            color=color,
-            linewidth=2.2,
-            marker="o",
-            markersize=4.5,
-            label=f"{display_name} (n={curve['num_runs']})",
-        )
-        ax.fill_between(
-            episodes,
-            lower_band,
-            upper_band,
-            color=color,
-            alpha=0.18,
-        )
-
-    ax.set_title("Validation Learning Curves: Mean Held-Out Score Across Training Seeds", fontsize=14, fontweight="bold")
-    ax.set_xlabel("Training episode")
-    ax.set_ylabel("Validation mean score")
-    ax.grid(axis="both", linestyle="--", alpha=0.3)
-    ax.set_axisbelow(True)
-    ax.legend(frameon=False)
-    ax.text(
-        0.99,
-        0.02,
-        "Validation uses fixed held-out seeds with exploration disabled",
-        transform=ax.transAxes,
-        ha="right",
-        va="bottom",
-        fontsize=9,
-        color="#374151",
-    )
-
-    fig.tight_layout()
-    fig.savefig(output_path, dpi=200, bbox_inches="tight")
-    plt.close(fig)
-
-
-def plot_score_boxplot(
+def plot_score_distribution(
     grouped_runs: dict[str, list[RunSummary]],
     output_path: Path,
     color_map: dict[str, str],
@@ -762,52 +694,212 @@ def plot_score_boxplot(
     multi-seed reinforcement learning project.
     """
 
-    ordered_variants = ordered_variant_names(grouped_runs)
-    display_names = [pretty_variant_name(variant) for variant in ordered_variants]
-    score_lists = [
-        [run.mean_score for run in grouped_runs[variant]]
-        for variant in ordered_variants
-    ]
+    variant_stats: list[dict[str, float | str | list[RunSummary]]] = []
+    for variant in ordered_variant_names(grouped_runs):
+        runs = grouped_runs[variant]
+        score_values = [run.mean_score for run in runs]
+        variant_stats.append(
+            {
+                "variant": variant,
+                "mean_score": float(mean(score_values)),
+                "score_std": sample_std(score_values),
+                "min_score": min(score_values),
+                "max_score": max(score_values),
+                "runs": runs,
+            }
+        )
 
-    fig, ax = plt.subplots(figsize=(10, 6))
-    boxplot = ax.boxplot(
-        score_lists,
-        labels=display_names,
-        patch_artist=True,
-        widths=0.55,
+    # Sort by mean final score so the strongest method is visible immediately.
+    variant_stats.sort(key=lambda item: float(item["mean_score"]), reverse=True)
+
+    fig = plt.figure(figsize=(13.5, 7.0))
+    fig.patch.set_facecolor("#FFFFFF")
+    grid = fig.add_gridspec(1, 2, width_ratios=[3.4, 1.25], wspace=0.08)
+    ax = fig.add_subplot(grid[0, 0])
+    note_ax = fig.add_subplot(grid[0, 1])
+    ax.set_facecolor("#FFFFFF")
+    note_ax.set_facecolor("#FFFFFF")
+    note_ax.axis("off")
+
+    y_positions = list(range(len(variant_stats)))
+    y_labels = [axis_variant_name(str(item["variant"])) for item in variant_stats]
+    seed_offsets = [-0.16, -0.08, 0.0, 0.08, 0.16]
+
+    vanilla_mean = next(
+        (
+            float(item["mean_score"])
+            for item in variant_stats
+            if item["variant"] == "vanilla_dqn"
+        ),
+        None,
+    )
+    if vanilla_mean is not None:
+        ax.axvline(
+            vanilla_mean,
+            color="#6B7280",
+            linestyle="--",
+            linewidth=1.4,
+            alpha=0.8,
+            zorder=1,
+        )
+        ax.text(
+            vanilla_mean + 4,
+            -0.38,
+            f"Vanilla mean\n{vanilla_mean:.1f}",
+            ha="left",
+            va="bottom",
+            fontsize=ANNOTATION_FONT_SIZE,
+            color="#374151",
+            bbox={"boxstyle": "round,pad=0.25", "facecolor": "#FFFFFF", "edgecolor": "#D1D5DB"},
+        )
+
+    for y_position, item in zip(y_positions, variant_stats):
+        variant = str(item["variant"])
+        runs = list(item["runs"])
+        mean_score = float(item["mean_score"])
+        score_std = float(item["score_std"])
+        color = color_map[variant]
+
+        # The translucent band makes variance readable without hiding seed dots.
+        ax.hlines(
+            y_position,
+            mean_score - score_std,
+            mean_score + score_std,
+            color=color,
+            linewidth=10,
+            alpha=0.18,
+            zorder=1,
+        )
+        ax.hlines(
+            y_position,
+            mean_score - score_std,
+            mean_score + score_std,
+            color=color,
+            linewidth=2.2,
+            alpha=0.9,
+            zorder=2,
+        )
+
+        for index, run in enumerate(runs):
+            y_offset = seed_offsets[index % len(seed_offsets)]
+            ax.scatter(
+                run.mean_score,
+                y_position + y_offset,
+                color=color,
+                edgecolor="#111827",
+                linewidth=0.8,
+                s=72,
+                zorder=4,
+            )
+            if run.seed is not None:
+                ax.text(
+                    run.mean_score + 5,
+                    y_position + y_offset,
+                    str(run.seed),
+                    va="center",
+                    ha="left",
+                    fontsize=10,
+                    color="#111827",
+                )
+
+        ax.scatter(
+            mean_score,
+            y_position,
+            marker="D",
+            color="#FFFFFF",
+            edgecolor="#111827",
+            linewidth=1.5,
+            s=115,
+            zorder=5,
+        )
+        ax.text(
+            mean_score,
+            y_position - 0.28,
+            f"{mean_score:.1f} mean",
+            ha="center",
+            va="top",
+            fontsize=10,
+            color="#111827",
+            fontweight="bold",
+        )
+
+    ax.set_title(
+        "Final Evaluation Score Distribution Across Training Seeds",
+        fontsize=TITLE_FONT_SIZE,
+        fontweight="bold",
+    )
+    ax.set_xlabel("Final mean score per trained seed", fontsize=AXIS_LABEL_FONT_SIZE)
+    ax.set_yticks(y_positions)
+    ax.set_yticklabels(y_labels)
+    ax.invert_yaxis()
+    ax.grid(axis="x", linestyle="--", alpha=0.22)
+    ax.set_axisbelow(True)
+    ax.tick_params(axis="x", labelsize=TICK_LABEL_FONT_SIZE)
+    ax.tick_params(axis="y", labelsize=TICK_LABEL_FONT_SIZE)
+    ax.margins(x=0.08, y=0.12)
+
+    ax.scatter([], [], color="#FFFFFF", edgecolor="#111827", marker="D", s=95, label="Variant mean")
+    ax.scatter([], [], color="#9CA3AF", edgecolor="#111827", s=60, label="Seed run")
+    ax.plot([], [], color="#6B7280", linewidth=2.2, label="+/- 1 seed std")
+    ax.legend(
+        loc="lower right",
+        frameon=True,
+        facecolor="#FFFFFF",
+        edgecolor="#D1D5DB",
+        framealpha=0.95,
+        fontsize=LEGEND_FONT_SIZE,
     )
 
-    for patch, variant in zip(boxplot["boxes"], ordered_variants):
-        patch.set_facecolor(color_map[variant])
-        patch.set_alpha(0.55)
-        patch.set_edgecolor("#1F2937")
-        patch.set_linewidth(1.0)
+    best_mean = variant_stats[0]
+    most_stable = min(variant_stats, key=lambda item: float(item["score_std"]))
+    widest_spread = max(variant_stats, key=lambda item: float(item["score_std"]))
+    weakest_seed = min(
+        (
+            (str(item["variant"]), run)
+            for item in variant_stats
+            for run in list(item["runs"])
+        ),
+        key=lambda pair: pair[1].mean_score,
+    )
 
-    for element_name in ("whiskers", "caps", "medians"):
-        for item in boxplot[element_name]:
-            item.set_color("#1F2937")
-            item.set_linewidth(1.0)
+    note_lines = [
+        "Seed variance notes",
+        "",
+        f"Highest mean: {pretty_variant_name(str(best_mean['variant']))}",
+        f"{float(best_mean['mean_score']):.1f} score",
+        "",
+        f"Most stable: {pretty_variant_name(str(most_stable['variant']))}",
+        f"std = {float(most_stable['score_std']):.1f}",
+        "",
+        f"Widest spread: {pretty_variant_name(str(widest_spread['variant']))}",
+        f"std = {float(widest_spread['score_std']):.1f}",
+        "",
+        f"Weakest seed: {pretty_variant_name(weakest_seed[0])}",
+        f"seed {weakest_seed[1].seed}, score {weakest_seed[1].mean_score:.1f}",
+        "",
+        "Read this plot:",
+        "dots = trained seeds",
+        "diamond = method mean",
+        "band = +/- 1 seed std",
+    ]
+    note_ax.text(
+        0.02,
+        0.98,
+        "\n".join(note_lines),
+        ha="left",
+        va="top",
+        fontsize=ANNOTATION_FONT_SIZE,
+        linespacing=1.28,
+        color="#111827",
+        bbox={
+            "boxstyle": "round,pad=0.65",
+            "facecolor": "#F9FAFB",
+            "edgecolor": "#D1D5DB",
+            "linewidth": 1.0,
+        },
+    )
 
-    # Overlay the actual seed results so the reader can see how many runs exist.
-    for x_position, variant in enumerate(ordered_variants, start=1):
-        for offset_index, run in enumerate(grouped_runs[variant]):
-            horizontal_offset = ((offset_index % 5) - 2) * 0.04
-            ax.scatter(
-                x_position + horizontal_offset,
-                run.mean_score,
-                color="#111827",
-                s=35,
-                zorder=3,
-            )
-
-    ax.set_title("Final Evaluation Score Distribution Across Seeds", fontsize=14, fontweight="bold")
-    ax.set_xlabel("Variant")
-    ax.set_ylabel("Final mean score")
-    ax.grid(axis="y", linestyle="--", alpha=0.35)
-    ax.set_axisbelow(True)
-
-    fig.tight_layout()
-    fig.savefig(output_path, dpi=200, bbox_inches="tight")
+    save_plot(fig, output_path)
     plt.close(fig)
 
 
@@ -845,11 +937,6 @@ def main() -> None:
         metric_name="episode_score",
         allowed_variants=allowed_variants,
     )
-    validation_series = load_validation_series(
-        runs_dir=args.runs_dir,
-        metric_name="mean_score",
-        allowed_variants=allowed_variants,
-    )
     grouped_runs = group_summaries_by_variant(summaries)
     aggregate_rows = build_aggregate_rows(grouped_runs)
     variant_names = ordered_variant_names(grouped_runs)
@@ -857,10 +944,6 @@ def main() -> None:
     aggregated_learning_curves = aggregate_training_series(
         grouped_series=training_series,
         smoothing_window=args.smoothing_window,
-    )
-    aggregated_validation_curves = aggregate_training_series(
-        grouped_series=validation_series,
-        smoothing_window=1,
     )
 
     print_run_warnings(
@@ -877,12 +960,6 @@ def main() -> None:
         color_map=color_map,
         smoothing_window=args.smoothing_window,
     )
-    if aggregated_validation_curves:
-        plot_validation_learning_curves(
-            aggregated_curves=aggregated_validation_curves,
-            output_path=args.plots_dir / "plot_6_validation_learning_curves_mean_score.png",
-            color_map=color_map,
-        )
     plot_bar_chart(
         aggregate_rows=aggregate_rows,
         metric_key="mean_score",
@@ -910,20 +987,24 @@ def main() -> None:
         output_path=args.plots_dir / "plot_4_final_episode_length_comparison_bar_chart.png",
         color_map=color_map,
     )
-    plot_score_boxplot(
+    plot_score_distribution(
         grouped_runs=grouped_runs,
         output_path=args.plots_dir / "plot_5_seed_variance_box_plot_final_score.png",
         color_map=color_map,
     )
+    plot_score_distribution(
+        grouped_runs=grouped_runs,
+        output_path=args.plots_dir / "plot_6_final_evaluation_score_distribution_across_seeds.png",
+        color_map=color_map,
+    )
 
-    print("Generated plot files:", flush=True)
+    print("Generated plot files (PNG and matching PDF):", flush=True)
     print(f"- {args.plots_dir / 'plot_1_learning_curves_mean_episode_score.png'}", flush=True)
-    if aggregated_validation_curves:
-        print(f"- {args.plots_dir / 'plot_6_validation_learning_curves_mean_score.png'}", flush=True)
     print(f"- {args.plots_dir / 'plot_2_final_score_comparison_bar_chart.png'}", flush=True)
     print(f"- {args.plots_dir / 'plot_3_final_return_comparison_bar_chart.png'}", flush=True)
     print(f"- {args.plots_dir / 'plot_4_final_episode_length_comparison_bar_chart.png'}", flush=True)
     print(f"- {args.plots_dir / 'plot_5_seed_variance_box_plot_final_score.png'}", flush=True)
+    print(f"- {args.plots_dir / 'plot_6_final_evaluation_score_distribution_across_seeds.png'}", flush=True)
     print("Generated data files:", flush=True)
     print(f"- {per_run_csv}", flush=True)
     print(f"- {aggregate_csv}", flush=True)

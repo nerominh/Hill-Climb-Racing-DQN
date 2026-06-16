@@ -1,4 +1,9 @@
 variant,run_name,seed,evaluation_episodes,first_seed,last_seed,mean_score,std_score,mean_return,std_return,mean_length,std_length,timestamp
+antistall_momentum_dqn,antistall_momentum_dqn_seed123,123,30,10000,10029,526.6333,112.3149,1967.3374,2926.45,2699.1333,602.1223,2026-06-07T11:12:54
+antistall_momentum_dqn,antistall_momentum_dqn_seed2026,2026,30,10000,10029,247.9,166.8331,281.1585,1926.0667,1267.9333,240.4831,2026-06-07T11:28:29
+antistall_momentum_dqn,antistall_momentum_dqn_seed42,42,30,10000,10029,516.4667,143.6616,2414.2802,962.2373,2137.5,688.0947,2026-06-07T11:07:56
+antistall_momentum_dqn,antistall_momentum_dqn_seed7,7,30,10000,10029,336.6333,220.7068,1725.684,1366.5188,1660.1333,1199.4415,2026-06-07T11:05:39
+antistall_momentum_dqn,antistall_momentum_dqn_seed999,999,30,10000,10029,497.2667,197.9663,2306.0234,985.3018,1929.1667,768.1607,2026-06-07T11:14:41
 momentum_sensitive_double_dqn,momentum_sensitive_double_dqn_seed123,123,30,10000,10029,537.3,177.5059,2290.5845,956.5949,1889.3667,768.6745,2026-06-06T23:12:45
 momentum_sensitive_double_dqn,momentum_sensitive_double_dqn_seed2026,2026,30,10000,10029,607.4667,31.9559,3396.663,363.7329,2935.4667,140.6202,2026-06-06T23:20:08
 momentum_sensitive_double_dqn,momentum_sensitive_double_dqn_seed42,42,30,10000,10029,483.1333,98.4492,1626.1511,1452.6196,2782.9333,538.1059,2026-06-06T23:06:24

@@ -1,9 +1,9 @@
-# Environment wrappers and observation utilities.
+"""AI work: Environment wrappers and observation utilities.
 
-# The Hill Climb Racing environment returns a Gymnasium Dict observation.
-# That is perfectly fine for Gym, but a plain MLP-based DQN is happiest when
-# the state is a single flat vector --> This file handles that translation.
-
+The Hill Climb Racing environment returns a Gymnasium Dict observation.
+That is perfectly fine for Gym, but a plain MLP-based DQN is happiest when
+the state is a single flat vector --> This file handles that translation.
+"""
 
 from __future__ import annotations
 

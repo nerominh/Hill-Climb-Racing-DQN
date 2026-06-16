@@ -1,4 +1,4 @@
-# Human work: My Vanilla DQN agent for the HCR project that is Human implemented
+# Human work: All DQN setup in this porject
 # Theoretical base that I use:
 # - the online Q-network
 # - the target Q-network
@@ -38,9 +38,6 @@ def load_checkpoint_payload(path, device):
     try:
         return torch.load(path, map_location=device)
     except pickle.UnpicklingError:
-        # Older local checkpoints may contain types such as WindowsPath in the
-        # saved metadata. Those are trusted artifacts from this project, so we
-        # fall back to full loading for backward compatibility.
         return torch.load(path, map_location=device, weights_only=False)
 
 
@@ -58,7 +55,7 @@ class DQNAgent:
                 "Expected 'dqn' or 'double_dqn'."
             )
 
-        # GPU is used if available, otherwise CPU is completely fine.
+        # GPU is used if available, otherwise CPU is completely fine
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Initialize the online and target Q-networks taken from the q_network.py file
@@ -107,8 +104,7 @@ class DQNAgent:
         return int(torch.argmax(q_values, dim=1).item()) 
 
     def _compute_next_q_values(self, next_states: torch.Tensor) -> torch.Tensor:
-        # Compute the bootstrap value using either the standard DQN target
-        # or the DoubleDQN selection/evaluation split.
+        # Compute the bootstrap value using either the standard DQN target or the DoubleDQN selection/evaluation split
         # For DQN, we take the max Q-value from the target network for the next states
         if self.td_target_mode == "dqn":
             return self.target_network(next_states).max(dim=1, keepdim=True).values
@@ -124,13 +120,13 @@ class DQNAgent:
         next_states = torch.as_tensor(batch["next_states"], dtype=torch.float32, device=self.device)
         dones = torch.as_tensor(batch["dones"], dtype=torch.float32, device=self.device).unsqueeze(1)
 
-        # Gather the Q-values for the actions that were actually taken.
+        # Gather the Q-values for the actions that were actually taken
         current_q_values = self.online_network(states).gather(1, actions)
 
         with torch.no_grad():
             # Standard DQN:
             # reward + gamma * max_a' Q_target(next_state, a')
-            #
+            
             # DoubleDQN:
             # reward + gamma * Q_target(next_state, argmax_a' Q_online(next_state, a'))
             next_q_values = self._compute_next_q_values(next_states)
@@ -191,16 +187,14 @@ class DQNAgent:
 
 
 # My variation: Momentum-Sensitive DQN
-# This keeps the normal DQN network and Bellman update, but changes the reward
-# stored in replay memory so the agent is encouraged to move forward smoothly.
+# This keeps the normal DQN network and Bellman update, but changes the reward stored in replay memory so the agent is encouraged to move forward smoothly
 class MomentumSensitiveDQNAgent(DQNAgent):
     # Vanilla DQN with a small custom reward shaping rule for stable motion
 
     def __init__(self, state_dim: int, action_dim: int, config) -> None:
-        # Reuse the full vanilla DQN setup first: networks, optimizer, epsilon, and target network.
+        # Reuse the full vanilla DQN setup first: networks, optimizer, epsilon, and target network
         super().__init__(state_dim, action_dim, config)
-
-        # These values are intentionally small because this is only a bonus/penalty on top of the environment reward
+        # Small value because this is only a bonus/penalty on top of the environment reward
         self.momentum_bonus_scale = getattr(config, "momentum_bonus_scale", 0.05)
         self.stall_penalty = getattr(config, "momentum_stall_penalty", 0.02)
         self.oscillation_penalty = getattr(config, "momentum_oscillation_penalty", 0.02)
@@ -212,7 +206,7 @@ class MomentumSensitiveDQNAgent(DQNAgent):
         self.air_penalty = getattr(config, "momentum_air_penalty", 0.01)
         self.back_wheel_penalty = getattr(config, "momentum_back_wheel_penalty", 0.005)
 
-        # These variables track short-term behavior inside one episode.
+        # Variables for tracking short-term behavior inside one episode
         self.previous_score: float | None = None
         self.previous_action: int | None = None
         self.forward_streak = 0
@@ -246,7 +240,7 @@ class MomentumSensitiveDQNAgent(DQNAgent):
         if info is None:
             info = {}
 
-        # The game score is based on the farthest forward distance reached by the car.
+        # Game score is based on the farthest forward distance reached by the car
         current_score = float(info.get("score", 0.0))
 
         if self.previous_score is None:
@@ -255,7 +249,7 @@ class MomentumSensitiveDQNAgent(DQNAgent):
             progress_delta = current_score - self.previous_score
 
         # The flattened observation order comes from env_wrappers.py:
-        # 0=x position, 2=chassis angle, 5=back wheel on ground, 6=front wheel on ground.
+        # 0=x position, 2=chassis angle, 5=back wheel on ground, 6=front wheel on ground
         x_delta = 0.0
         chassis_angle = 0.0
         back_wheel_on_ground = 1.0
@@ -266,7 +260,7 @@ class MomentumSensitiveDQNAgent(DQNAgent):
             back_wheel_on_ground = float(next_state[5])
             front_wheel_on_ground = float(next_state[6])
 
-        # A forward step means the car actually moved forward or improved the game score.
+        # Forward step means the car actually moved forward/improved the game score
         motion_progress = max(progress_delta, x_delta)
         self.last_motion_progress = motion_progress
         self.last_progress_delta = progress_delta
@@ -299,7 +293,7 @@ class MomentumSensitiveDQNAgent(DQNAgent):
         if back_wheel_on_ground >= 0.5 and front_wheel_on_ground < 0.5:
             shaped_reward -= self.back_wheel_penalty
 
-        # Penalty: if the car stops making useful progress for too long, discourage that behavior
+        # Penalty: if the car stops making useful progress for too long --> discourage that behavior
         if self.stall_steps >= self.stall_patience:
             shaped_reward -= self.stall_penalty
 
@@ -319,23 +313,18 @@ class MomentumSensitiveDQNAgent(DQNAgent):
 
 
 # My variation: Anti-Stall Momentum DQN
-# This builds directly on the momentum-sensitive reward, but adds a stronger
-# penalty when the car is stuck and the agent keeps choosing idle/reverse instead of trying to recover.
+# Builds directly on the momentum-sensitive reward, but adds a stronger penalty when the car is stuck and the agent keeps choosing idle/reverse instead of trying to recover
 class AntiStallMomentumDQNAgent(MomentumSensitiveDQNAgent):
     # Momentum-sensitive DQN with extra pressure against doing nothing while stuck
-
     def __init__(self, state_dim: int, action_dim: int, config) -> None:
-        # Start from the full momentum-sensitive setup first, then add the anti-stall settings.
+        # Start from the full momentum-sensitive setup first --> add the anti-stall settings
         super().__init__(state_dim, action_dim, config)
-
-        # Discrete action meanings from the environment:
-        # 0 = idle, 1 = gas, 2 = reverse.
+        # 0 = idle, 1 = gas, 2 = reverse
         self.gas_action = 1
         self.idle_action = 0
         self.reverse_action = 2
 
-        # These values are still reward shaping terms, so they should be strong enough to matter,
-        # but not so huge that the agent forgets the original distance reward.
+        # Reward shaping terms, large enough, not so huge that the agent forgets the original distance reward
         self.anti_stall_patience = getattr(config, "anti_stall_patience", 20)
         self.anti_stall_progress_threshold = getattr(config, "anti_stall_progress_threshold", 0.01)
         self.anti_stall_idle_penalty = getattr(config, "anti_stall_idle_penalty", 0.08)
@@ -345,8 +334,7 @@ class AntiStallMomentumDQNAgent(MomentumSensitiveDQNAgent):
         self.anti_stall_penalty_cap = getattr(config, "anti_stall_penalty_cap", 0.25)
         self.anti_stall_gas_recovery_bonus = getattr(config, "anti_stall_gas_recovery_bonus", 0.03)
 
-        # Separate counter from momentum_stall_steps because here I care about low progress,
-        # not only completely zero or negative progress.
+        # Separate counter from momentum_stall_steps
         self.anti_stall_steps = 0
 
     def reset_episode_reward_state(self) -> None:
@@ -362,20 +350,20 @@ class AntiStallMomentumDQNAgent(MomentumSensitiveDQNAgent):
         state: np.ndarray | None = None,
         next_state: np.ndarray | None = None,
     ) -> float:
-        # First apply the original momentum-sensitive reward shaping.
+        # Apply the original momentum-sensitive reward shaping
         shaped_reward = super().shape_reward(reward, action, info, state, next_state)
 
         action = int(action)
         motion_progress = self.last_motion_progress
         was_anti_stalled = self.anti_stall_steps >= self.anti_stall_patience
 
-        # Low progress for many steps means the car is probably stuck on terrain.
+        # Low progress for many steps --> the car is probably stuck on terrain
         if motion_progress <= self.anti_stall_progress_threshold:
             self.anti_stall_steps += 1
         else:
             self.anti_stall_steps = 0
 
-            # Only reward gas recovery if the agent was actually stuck before and gas helped it move.
+            # Only reward gas recovery if the agent was actually stuck before and gas helped it move
             if was_anti_stalled and action == self.gas_action:
                 clipped_progress = min(max(motion_progress, 0.0), self.progress_clip)
                 shaped_reward += self.anti_stall_gas_recovery_bonus * clipped_progress
@@ -385,8 +373,8 @@ class AntiStallMomentumDQNAgent(MomentumSensitiveDQNAgent):
         if self.anti_stall_steps < self.anti_stall_patience:
             return shaped_reward
 
-        # Once stuck, idle is the main behavior I want to punish.
-        # Reverse is punished too, but slightly less because sometimes it can help reposition the car.
+        # Once stuck, idle is the main behavior I want to punish
+        # Reverse is punished too, but slightly less because sometimes it can help reposition the car
         if action == self.idle_action:
             penalty = self.anti_stall_idle_penalty
         elif action == self.reverse_action:
@@ -396,7 +384,7 @@ class AntiStallMomentumDQNAgent(MomentumSensitiveDQNAgent):
         else:
             penalty = self.anti_stall_idle_penalty
 
-        # The longer the agent stays stuck, the more the pressure increases, up to a cap.
+        # The longer the agent stays stuck, the more the pressure increases, up to a cap
         extra_stuck_steps = self.anti_stall_steps - self.anti_stall_patience + 1
         penalty += self.anti_stall_penalty_growth * extra_stuck_steps
         shaped_reward -= min(penalty, self.anti_stall_penalty_cap)

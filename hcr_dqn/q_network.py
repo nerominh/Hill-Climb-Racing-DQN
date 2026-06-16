@@ -1,6 +1,5 @@
 # Human work: My personal implementation of the neural network used by vanilla DQN
-# The network is intentionally a plain multilayer perceptron because our current
-# state is already a compact numeric vector (from the env_wrapper that flattened the environment to a vector) 
+# The network is intentionally a plain multilayer perceptron because our current state is already a compact numeric vector (from the env_wrapper that flattened the environment to a vector) 
 # --> No need convolutional layers 
 from __future__ import annotations 
 
@@ -18,8 +17,7 @@ except ModuleNotFoundError as exc:
 
 
 # Main Q-network class
-# Vanilla DQN and my momentum-sensitive variation use the same network.
-# This keeps the comparison focused on the reward-shaping idea, not on a bigger model.
+# Vanilla DQN and my momentum-sensitive variation use the same network
 class QNetwork(nn.Module):
     # Map a flat observation vector to one Q-value per action
 
@@ -32,7 +30,7 @@ class QNetwork(nn.Module):
             raise ValueError("output_dim must be positive.")
         
         # Build the MLP layers based on the hidden_sizes configuration
-        # The network is a simple feedforward MLP with ReLU activations
+        # Simple feedforward MLP with ReLU activations
         layers: list[nn.Module] = []
         previous_size = input_dim
 

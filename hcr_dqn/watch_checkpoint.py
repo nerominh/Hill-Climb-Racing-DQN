@@ -1,4 +1,5 @@
-"""Visual runner for watching a saved DQN checkpoint play the game.
+""" AI work
+Visual runner for watching a saved DQN checkpoint play the game.
 I have let this be AI generated so that I don't have to maintain it. 
 It's not really part of the core project, and it's mostly just boilerplate for rendering and handling window events, which is a bit outside my usual wheelhouse. 
 The important thing is that it can load a checkpoint and run episodes with the trained agent, so I can watch how it's doing in the game.

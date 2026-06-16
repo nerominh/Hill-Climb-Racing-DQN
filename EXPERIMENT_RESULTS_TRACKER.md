@@ -148,8 +148,8 @@ Planned progression:
 3. After comparing those two, note the deeper mathematical bottleneck in standard DQN itself.
 4. Try plain `double_dqn` to address that bottleneck directly.
 5. Combine the DoubleDQN target rule with the custom momentum-sensitive reward shaping to produce `momentum_sensitive_double_dqn`.
-6. Because `momentum_sensitive_dqn` is still the best completed method by mean score and return, apply the new anti-stall reward modification there first as `antistall_momentum_dqn`.
-7. If `antistall_momentum_dqn` improves stuck recovery, then test the same reward idea with DoubleDQN as `antistall_momentum_double_dqn`.
+6. Test the new anti-stall reward modification on the best reward-shaped DQN base as `antistall_momentum_dqn`.
+7. Stop the anti-stall branch because `antistall_momentum_dqn` performed worse than the previous momentum-based variations and did not solve the watched stuck/unstable-action behavior.
 
 Reason for adding `double_dqn`:
 - Both `vanilla_dqn` and `momentum_sensitive_dqn` still rely on the standard DQN target.
@@ -166,7 +166,7 @@ Reporting takeaway:
 - `double_dqn` answers: "What happens if I keep the task mostly the same but fix the overestimation bias in the update rule?"
 - `momentum_sensitive_double_dqn` answers: "What happens if I combine the algorithmic fix with my custom reward design?"
 - `antistall_momentum_dqn` answers: "What happens if I keep the best reward-shaped DQN base and directly punish the stuck/no-recovery behavior?"
-- `antistall_momentum_double_dqn` should only be used later to answer: "Does the same anti-stall reward also help when the target rule is DoubleDQN?"
+- `antistall_momentum_double_dqn` is no longer recommended because the anti-stall reward change did not improve the DQN version.
 
 ---
 
@@ -186,6 +186,7 @@ Use this section when writing the Results and Discussion parts of the report.
 
 File:
 - `plots/plot_1_learning_curves_mean_episode_score.png`
+- `plots/plot_1_learning_curves_mean_episode_score.pdf`
 
 Data source:
 - `runs/<run_name>/logs/training_metrics.csv`
@@ -194,20 +195,20 @@ Data source:
 What the plot shows:
 - one line per variant, such as `vanilla_dqn` and `momentum_sensitive_dqn`
 - each line is the mean episode score across the available seeds
-- the shaded band is the across-seed standard deviation
+- the shaded band around each line shows the across-seed standard deviation
 - the curve is smoothed with a trailing moving-average window of 20 episodes by default
 
 How to read it:
 - higher curves mean better average training-time game progress
 - a steeper early rise means the method learns faster
 - a higher late-stage plateau means the method finishes training at a stronger level
-- a narrow shaded band means the method is more consistent across seeds
-- a wide shaded band means the method is more sensitive to seed choice
+- use the shaded bands for training-time variance and the final seed-distribution plot for held-out stability
 
 What this plot is good for:
 - comparing learning speed
-- comparing training stability
+- comparing mean training trend
 - showing whether one method consistently overtakes another during training
+- showing whether training behavior varies heavily across seeds
 
 Important caution:
 - this is a training curve, not the final held-out test result
@@ -233,41 +234,23 @@ Current comparative interpretation for `vanilla_dqn`, `momentum_sensitive_dqn`, 
 
 4. What this training curve cannot prove
 - Observation: this plot is still based on training episode score, not the held-out final evaluation.
-- Interpretation: a method can look strong here and still lose on held-out evaluation, or vice versa. Use this plot together with the final bar charts and box plot before making claims.
+- Interpretation: a method can look strong here and still lose on held-out evaluation, or vice versa. Use this plot together with the final bar charts and seed-distribution plot before making claims.
 
 Important reporting note:
 - Use this interpretation when discussing `plots/plot_1_learning_curves_mean_episode_score.png`.
 - Do not treat this section as a replacement for final reporting.
 - Final performance claims should still be grounded in the held-out results recorded from `evaluation_summaries.csv` and `evaluation_episode_details.csv`.
 
-### Plot 6: Validation learning curves
-
-File:
-- `plots/plot_6_validation_learning_curves_mean_score.png`
-
-Data source:
-- `runs/<run_name>/logs/validation_metrics.csv`
-- legacy fallback for older runs: validation checkpoints reconstructed from `training_metrics.csv`
-- metric used: held-out validation `mean_score` during training
-
-What the plot shows:
-- one line per variant
-- each point is a greedy validation score measured on the fixed validation seed block during training
-- the shaded band is the across-seed standard deviation at that checkpoint
-
-Why this plot matters more than raw training score for checkpoint selection:
-- it removes exploration noise
-- it uses a held-out seed block instead of the same trajectory that generated the replay data
-- it is a better view of which checkpoints are actually improving on repeatable terrains
-
-Reporting note:
-- this is the preferred plot when discussing checkpoint-selection quality and validation stability
-- `plot_1` is still useful for training dynamics, but `plot_6` is the stronger validation-based plot
+Validation-learning plot status:
+- The validation-learning plot has been removed from the generated report plot set.
+- Validation is still part of the training protocol for checkpoint selection, but the report plots now focus on training learning curves and final held-out evaluation results.
+- The plotting script exports each generated figure as both `.png` and `.pdf`; use the PDF files for LaTeX when possible.
 
 ### Plot 2: Final score comparison bar chart
 
 File:
 - `plots/plot_2_final_score_comparison_bar_chart.png`
+- `plots/plot_2_final_score_comparison_bar_chart.pdf`
 
 Data source:
 - `runs/<run_name>/logs/evaluation_summaries.csv`
@@ -291,14 +274,16 @@ Current interpretation:
 - `momentum_sensitive_dqn` currently has the highest final mean score at about `529.33`.
 - `momentum_sensitive_double_dqn` is very close at about `516.55`.
 - `vanilla_double_dqn` is next at about `482.42`.
-- `vanilla_dqn` is lower at about `410.03`.
+- `antistall_momentum_dqn` is lower at about `424.98`, only slightly above `vanilla_dqn` at about `410.03`.
 - The combined `momentum_sensitive_double_dqn` result is important: it improves over plain DoubleDQN and is more consistent across seeds, but it still does not beat `momentum_sensitive_dqn` on mean score.
 - `momentum_sensitive_double_dqn` has the smallest across-seed final-score standard deviation at about `58.04`.
+- `antistall_momentum_dqn` has a high final-score standard deviation at about `125.59`, so it does not improve seed consistency over the earlier momentum-based methods.
 
 ### Plot 3: Final return comparison bar chart
 
 File:
-- `plots/final_return_comparison_bar_chart.png`
+- `plots/plot_3_final_return_comparison_bar_chart.png`
+- `plots/plot_3_final_return_comparison_bar_chart.pdf`
 
 Data source:
 - `runs/<run_name>/logs/evaluation_summaries.csv`
@@ -326,15 +311,17 @@ Current interpretation:
 - `momentum_sensitive_dqn` has the highest final mean return at about `2322.02`.
 - `momentum_sensitive_double_dqn` is next at about `2017.76`.
 - `vanilla_double_dqn` follows at about `1786.62`.
-- `vanilla_dqn` is lower at about `1670.44`.
+- `antistall_momentum_dqn` follows at about `1738.90`, only slightly above `vanilla_dqn` at about `1670.44`.
 - The refreshed result suggests the shaped reward is no longer only improving score; it also improves final held-out return under the current evaluation.
 - The combined method has lower return than `momentum_sensitive_dqn`, which suggests that the DoubleDQN target plus the current shaping does not automatically improve reward optimization.
 - `vanilla_double_dqn` improves over vanilla DQN on mean return, but its return standard deviation is still large, so the return improvement is not equally reliable for every seed.
+- The anti-stall reward did not improve reward optimization compared with `momentum_sensitive_dqn`; the return drop suggests that the extra stuck penalty changed behavior without producing better terrain progress.
 
 ### Plot 4: Final episode length comparison bar chart
 
 File:
-- `plots/final_episode_length_comparison_bar_chart.png`
+- `plots/plot_4_final_episode_length_comparison_bar_chart.png`
+- `plots/plot_4_final_episode_length_comparison_bar_chart.pdf`
 
 Data source:
 - `runs/<run_name>/logs/evaluation_summaries.csv`
@@ -359,29 +346,35 @@ Current interpretation:
 - `momentum_sensitive_double_dqn` has the highest mean episode length at about `2380.01`.
 - `momentum_sensitive_dqn` is next at about `2248.01`.
 - `vanilla_double_dqn` is close at about `2202.62`.
-- `vanilla_dqn` is lower at about `1912.07`.
+- `antistall_momentum_dqn` is lower at about `1938.77`, only slightly above `vanilla_dqn` at about `1912.07`.
 - This suggests the combined method is especially good at staying alive, but survival is not the same as solving the terrain.
 - The visual stuck behavior is important because a high mean episode length can hide cases where the car survives but stops making useful progress.
+- The anti-stall method did not create longer or more useful survival than the previous momentum variants.
 
-### Plot 5: Seed variance box plot for final score
+### Plot 5: Seed variance plot for final score
 
 File:
 - `plots/plot_5_seed_variance_box_plot_final_score.png`
+- `plots/plot_5_seed_variance_box_plot_final_score.pdf`
+- clearer report-facing duplicate: `plots/plot_6_final_evaluation_score_distribution_across_seeds.png`
+- clearer report-facing PDF duplicate: `plots/plot_6_final_evaluation_score_distribution_across_seeds.pdf`
 
 Data source:
 - `runs/<run_name>/logs/evaluation_summaries.csv`
 - metric used: per-seed `mean_score`
 
 What the plot shows:
-- one box per variant
-- each box summarizes the distribution of final scores across seeds
-- the scattered points show the actual seed-level values
+- one ranked row per variant
+- each dot is one trained seed's final mean score
+- the white diamond is the across-seed method mean
+- the horizontal band is plus or minus one across-seed standard deviation
+- the right-side notes summarize the highest mean, most stable method, widest spread, and weakest seed
 
 How to read it:
-- the median line inside the box shows the middle result
-- the box height shows the interquartile range, which is the middle spread of results
-- shorter boxes usually mean more stable seed-to-seed behavior
-- taller boxes or more spread-out points mean more variance across seeds
+- rows near the top have higher mean final score
+- tighter seed dots and shorter bands mean better seed-to-seed consistency
+- wider bands mean stronger dependence on the training seed
+- compare the white diamond with the dots to see whether one seed is carrying the average
 
 What this plot is good for:
 - showing reliability
@@ -392,11 +385,11 @@ Why this plot matters in this project:
 - this plot helps justify whether a gain is consistently repeatable or only driven by one or two lucky runs
 
 Current interpretation:
-- `momentum_sensitive_dqn` has the highest final-score mean, while `momentum_sensitive_double_dqn` has the lowest across-seed score standard deviation.
-- `momentum_sensitive_double_dqn` is numerically consistent, but watched behavior still shows instability and stuck cases, especially around the seed-2026 behavior notes.
-- `vanilla_double_dqn` improves over `vanilla_dqn` on average, but still has weaker seeds such as `seed42` and `seed2026` compared with stronger seeds such as `seed7` and `seed999`.
-- `vanilla_dqn` now has the lowest mean final score and includes one especially weak seed, `seed123`.
-- This supports the updated conclusion that reward shaping is still the strongest direction, but the next reward design should directly penalize getting stuck instead of only rewarding smooth momentum.
+- `momentum_sensitive_dqn` has the highest final-score mean at about `529.33`.
+- `momentum_sensitive_double_dqn` is the most stable method, with the lowest across-seed score standard deviation at about `58.04`.
+- `vanilla_dqn`, `vanilla_double_dqn`, and `antistall_momentum_dqn` have much wider seed bands, so their final performance is more seed-dependent.
+- `antistall_momentum_dqn` has the widest final-score spread among the completed methods, with score standard deviation about `125.59`.
+- The weak `antistall_momentum_dqn_seed2026` result supports the updated conclusion that the current anti-stall penalty should not be extended further. It may have pushed the agent toward unstable recovery attempts or excess gas instead of controlled stuck recovery.
 
 ---
 
@@ -423,8 +416,8 @@ Record each method here before running it.
 | EXP-002 | momentum_sensitive_dqn | Reward shaping for smoother forward motion and less unstable flipping/balancing | Yes | 5 | Completed |
 | EXP-003 | vanilla_double_dqn | Replace the standard DQN max target with decoupled online-action selection and target-network evaluation | Yes | 5 | Completed |
 | EXP-004 | momentum_sensitive_double_dqn | DoubleDQN target rule plus the custom Momentum-Sensitive reward function | Yes | 5 | Completed |
-| EXP-005 | antistall_momentum_dqn | Next reward modification applied to the best current base method: strongly penalize being stuck while not using gas or trying to recover | Code implemented | 5 | Recommended next |
-| EXP-006 | antistall_momentum_double_dqn | Later follow-up: apply the same anti-stall reward idea on top of Momentum-Sensitive DoubleDQN if EXP-005 improves stuck recovery | Design pending | 5 | Future follow-up |
+| EXP-005 | antistall_momentum_dqn | Anti-stall reward modification applied to the momentum-sensitive DQN base | Yes | 5 | Completed, discontinued |
+| EXP-006 | antistall_momentum_double_dqn | Same anti-stall reward idea on top of Momentum-Sensitive DoubleDQN | No | 0 | Cancelled |
 
 ---
 
@@ -469,6 +462,16 @@ Record each method here before running it.
 | EXP-004 | momentum_sensitive_double_dqn | 999 | `momentum_sensitive_double_dqn_seed999` | 460.1000 | 760.8665 | 2236.8000 | Weakest combined-method seed by score and return; likely survives without enough useful progress |
 | EXP-004 | momentum_sensitive_double_dqn | 2026 | `momentum_sensitive_double_dqn_seed2026` | 607.4667 | 3396.6630 | 2935.4667 | Strongest numeric seed, but visual notes still show instability and stuck behavior with little improvement |
 
+### EXP-005
+
+| Experiment ID | Method | Seed | Run Name | Final Mean Score | Final Mean Return | Final Mean Length | Notes |
+|---|---|---:|---|---:|---:|---:|---|
+| EXP-005 | antistall_momentum_dqn | 7 | `antistall_momentum_dqn_seed7` | 336.6333 | 1725.6840 | 1660.1333 | Weak score and very high per-episode spread; watched behavior remained unstable |
+| EXP-005 | antistall_momentum_dqn | 42 | `antistall_momentum_dqn_seed42` | 516.4667 | 2414.2802 | 2137.5000 | Stronger anti-stall seed, but still below the best momentum-sensitive seeds |
+| EXP-005 | antistall_momentum_dqn | 123 | `antistall_momentum_dqn_seed123` | 526.6333 | 1967.3374 | 2699.1333 | Best anti-stall seed by final score, but not enough to lift the method above previous momentum variants |
+| EXP-005 | antistall_momentum_dqn | 999 | `antistall_momentum_dqn_seed999` | 497.2667 | 2306.0234 | 1929.1667 | Decent score and return, but still visually unstable during checkpoint watching |
+| EXP-005 | antistall_momentum_dqn | 2026 | `antistall_momentum_dqn_seed2026` | 247.9000 | 281.1585 | 1267.9333 | Severe weak seed; confirms the anti-stall change did not improve consistency |
+
 
 ---
 
@@ -482,8 +485,8 @@ After all seeds for one method are complete, summarize them here.
 | EXP-002 | momentum_sensitive_dqn | 5 | 529.3266 | 4108.3495 | 64.0964 | 2322.0222 | 412639.5196 | 642.3702 | 2248.0067 | 200894.7540 | 448.2128 |
 | EXP-003 | vanilla_double_dqn | 5 | 482.4200 | 14733.2756 | 121.3807 | 1786.6174 | 1615135.2012 | 1270.8797 | 2202.6200 | 90144.3832 | 300.2405 |
 | EXP-004 | momentum_sensitive_double_dqn | 5 | 516.5533 | 3368.5498 | 58.0392 | 2017.7562 | 927239.0041 | 962.9325 | 2380.0133 | 209356.5058 | 457.5549 |
-| EXP-005 | antistall_momentum_dqn | 5 |  |  |  |  |  |  |  |  |  |
-| EXP-006 | antistall_momentum_double_dqn | 5 |  |  |  |  |  |  |  |  |  |
+| EXP-005 | antistall_momentum_dqn | 5 | 424.9800 | 15772.7606 | 125.5897 | 1738.8967 | 738783.9886 | 859.5254 | 1938.7733 | 286349.6182 | 535.1165 |
+| EXP-006 | antistall_momentum_double_dqn | 0 | Not run | Not run | Not run | Not run | Not run | Not run | Not run | Not run | Not run |
 
 Interpretation:
 - higher mean score is better on average
@@ -589,7 +592,8 @@ What changed relative to baseline:
   same Q-network, same Bellman update, same optimizer, same epsilon-greedy policy, same replay buffer structure, and same target network update logic.
 
 Evaluation comments to reuse in the report:
-- In the refreshed final evaluation, `momentum_sensitive_dqn` is the strongest completed method numerically, with the highest mean score, highest mean return, highest mean length, and lowest across-seed final-score standard deviation.
+- In the refreshed final evaluation, `momentum_sensitive_dqn` is the strongest completed method by mean score and mean return.
+- It does not have the longest mean episode length or the lowest final-score standard deviation; those belong to `momentum_sensitive_double_dqn`.
 - The shaped reward appears to improve both forward progress and reward alignment under the updated validation and final-evaluation setup.
 - The main weakness is qualitative rather than hidden by the aggregate score: the agent can get stuck on more elevated terrain and does not do anything useful to solve the situation.
 - The method is also visually aggressive in some seeds, so the strong mean result should be reported together with the remaining failure modes: flipping backward, overshooting hills, and stalling on difficult elevated terrain.
@@ -709,12 +713,12 @@ Interpretation to reuse in the report:
 ### EXP-005: Anti-Stall Momentum DQN
 
 Method description:
-- This is the recommended next experiment because `momentum_sensitive_dqn` is still the strongest completed method by final mean score and final mean return.
+- This experiment tested whether the remaining stuck-recovery problem could be fixed by adding an explicit anti-stall penalty to the `momentum_sensitive_dqn` reward.
 - Keep the standard DQN target rule and the momentum-sensitive reward terms.
 - Add a stronger stuck-recovery reward modification that penalizes long periods of little or no progress, especially when the selected action is idle or reverse instead of gas.
-- This isolates the reward change more cleanly than applying it to DoubleDQN first. If the result improves, the same anti-stall idea can later be combined with DoubleDQN.
+- This isolated the reward change more cleanly than applying it to DoubleDQN first.
 
-Planned config values:
+Config values:
 - `run_name` pattern: antistall_momentum_dqn_seed_(num_seed)
 - `seed` list: 42, 123, 999, 2026, 7
 - `agent_variant`: antistall_momentum
@@ -736,10 +740,17 @@ Design caution:
 - A good rule is to penalize "stuck plus not trying to recover" more than "temporarily slow."
 - Track a new diagnostic during evaluation if possible: number of stuck steps, longest stuck streak, and gas action rate during stuck streaks.
 
-Expected result:
-- This variation should reduce the common behavior where the agent survives but sits stuck without improving.
-- The key metric to watch is not only final mean score. Also compare mean length against score and inspect whether long episodes still contain stalled behavior.
-- If this improves `momentum_sensitive_dqn`, then EXP-006 can test `antistall_momentum_double_dqn` to see whether the anti-stall reward and DoubleDQN target rule work better together.
+Observed result:
+- Final mean score: about `424.98`, much lower than `momentum_sensitive_dqn` at about `529.33` and `momentum_sensitive_double_dqn` at about `516.55`.
+- Final mean return: about `1738.90`, lower than `momentum_sensitive_dqn` at about `2322.02` and `momentum_sensitive_double_dqn` at about `2017.76`.
+- Final mean episode length: about `1938.77`, lower than all previous non-baseline variants.
+- Final score standard deviation: about `125.59`, much higher than both momentum-based methods and almost the same instability level as vanilla DQN.
+- Seed `2026` is the clearest failure case, with final mean score `247.90`, final mean return `281.16`, and final mean length `1267.93`.
+
+Conclusion:
+- The anti-stall modification did not improve the previous momentum-sensitive variation.
+- Watched checkpoint behavior matches the numbers: actions are still unstable, the agent can still stall near the end, and it more frequently rolls forward or terminates because the stronger gas pressure creates excessive forward motion.
+- Do not continue this branch into `antistall_momentum_double_dqn`. The reward idea should be redesigned before combining it with another target rule.
 
 ---
 
@@ -800,18 +811,25 @@ Use this section for qualitative observations from `watch_checkpoint.py`.
 
 ### antistall_momentum_dqn
 
-- This is the recommended next variation.
-- Reason for using this base first: `momentum_sensitive_dqn` has the best completed mean score and mean return, so the anti-stall reward should be tested there before adding another algorithmic change.
-- Main behavior target: reduce stuck states where the agent is not trying to increase gas.
-- The reward should strongly penalize repeated no-progress steps when the agent keeps choosing idle or reverse, and only give a small recovery bonus for gas when it actually helps progress.
+- Did the anti-stall modification improve behavior?
+  - No. It is worse than the previous momentum-sensitive variations in the final evaluation results.
+- Did it solve the stuck behavior?
+  - No. The agent still sometimes stalls near the end of watched checkpoint episodes.
+- Did it change the action style?
+  - Yes. Actions are still unstable, and the agent more frequently rolls forward due to excess gas pressure.
+- Common failure mode: the agent may try to avoid being stuck by applying too much forward motion, then terminate more often instead of recovering in a controlled way.
+- Best numeric seed: Seed 123 by final score.
+- Weakest numeric seed: Seed 2026 by final score, return, and episode length.
+- Report conclusion:
+  - The current anti-stall reward does not improve the project result. It should be treated as a failed branch rather than the next base method.
 - Current implementation note:
   - Code mode is available in `hcr_dqn` as `agent_variant = antistall_momentum`.
   - Default run name pattern is `antistall_momentum_dqn_seed7`.
 
 ### antistall_momentum_double_dqn
 
-- This should be treated as a later follow-up, not the immediate next experiment.
-- Only run this if `antistall_momentum_dqn` improves stuck recovery, because then it is worth testing whether the same reward change also benefits the DoubleDQN target rule.
+- This follow-up is cancelled.
+- Reason: `antistall_momentum_dqn` did not improve the previous momentum-sensitive methods numerically or visually, so there is no strong reason to combine the same reward modification with DoubleDQN.
 
 ---
 
@@ -831,8 +849,8 @@ Final summary:
 - Based on the refreshed held-out final evaluation, `momentum_sensitive_dqn` is still the best completed method by mean score (`529.33`) and mean return (`2322.02`).
 - `momentum_sensitive_double_dqn` is the second-best method by mean score (`516.55`) and has the lowest final-score standard deviation (`58.04`), so combining DoubleDQN with the custom reward improved consistency.
 - The combined method has the longest mean episode length (`2380.01`), but the visual behavior shows why length alone is not enough: the agent can survive while getting stuck and not doing anything useful.
-- The main remaining problem is stalled recovery. The speed is generally good, but consistency is not there, and agents can still get stuck with little to no improvement.
-- The recommended next experiment is `antistall_momentum_dqn`: keep the best-performing `momentum_sensitive_dqn` base, but add a stronger penalty for repeated no-progress steps when the agent is idle/reverse or not attempting gas-based recovery.
-- The later follow-up is `antistall_momentum_double_dqn`, but it should come after EXP-005 so the reward modification can be evaluated cleanly before mixing it with the DoubleDQN target rule.
+- `antistall_momentum_dqn` does not improve the previous momentum-based results. Its final mean score is only `424.98`, and its final-score standard deviation is high at `125.59`.
+- The watch-checkpoint behavior explains the weaker numbers: actions remain unstable, the agent can still stall near the end, and the added pressure to recover can make it roll forward with excess gas and terminate more frequently.
+- The anti-stall branch should stop here. Do not run `antistall_momentum_double_dqn` unless the anti-stall reward is redesigned first.
 
 ---

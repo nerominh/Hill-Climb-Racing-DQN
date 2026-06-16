@@ -1,7 +1,6 @@
-"""Configuration objects for the DQN training scaffold.
+"""AI work: Configuration objects for the DQN training scaffold.
 
 The point of this file is to keep all of the "magic numbers" in one place.
-When you start tuning later, this becomes the single source of truth.
 """
 
 from __future__ import annotations

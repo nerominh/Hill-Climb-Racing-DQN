@@ -1,4 +1,4 @@
-"""Small command-line entry point for evaluating a saved DQN checkpoint."""
+"""AI work: Small command-line entry point for evaluating a saved DQN checkpoint."""
 
 from __future__ import annotations
 

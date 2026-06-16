@@ -1,84 +1,131 @@
 # Hill Climb Racing DQN
 
-This repository combines two layers of work into a single research and development codebase:
+A reinforcement learning project that trains and compares DQN-style agents on a physics-based Hill Climb Racing Gymnasium environment.
 
-1. A reused and vendored Hill Climb Racing Gymnasium environment in [`hillclimbracing`](./hillclimbracing)
-2. A separate DQN training and evaluation package in [`hcr_dqn`](./hcr_dqn) built on top of that environment
+This repository combines:
 
-The main goal of this repository is to study value-based reinforcement learning for a physics-driven Hill Climb Racing task. The environment package provides the simulator, while the top-level project adds DQN-oriented training code, experiment tracking, evaluation utilities, and project documentation.
+1. A reused Hill Climb Racing Gymnasium simulator from [`alexzh3/hillclimbracing`](https://github.com/alexzh3/hillclimbracing), vendored locally in [`hillclimbracing`](./hillclimbracing)
+2. A separate project-specific DQN package in [`hcr_dqn`](./hcr_dqn)
+3. Multi-seed experiment logs, generated plots, and project documentation for comparing DQN variants
 
-## Repository Purpose
+The simulator is treated as the environment layer. My reinforcement-learning work lives around it in `hcr_dqn`, especially the Q-network, agent logic, training/evaluation flow, and experiment tracking.
 
-This is not only the original environment package and not only a standalone DQN script collection. It is a combined project that:
+## Demo
 
-- reuses the original Hill Climb Racing simulator as the experimental environment
-- adds a DQN pipeline for discrete-control reinforcement learning
-- separates simulator code from RL code so the contribution boundary stays clear
-- supports training, evaluation, checkpoint watching, and experiment logging
+The original environment provides the Hill Climb Racing physics task used by this project:
 
-In practice, the `hillclimbracing` folder is the simulation dependency and the `hcr_dqn` folder is the project-specific reinforcement learning layer.
+<p align="center">
+  <img src="./hillclimbracing/hill_racing_env/envs/pictures/hcr_demo.gif" alt="Hill Climb Racing Gymnasium environment demo" width="720">
+</p>
 
-## Relationship To The Original `hillclimbracing` Project
+## My DQN Experiment Showcase
 
-The environment code in [`hillclimbracing`](./hillclimbracing) is derived from the original open-source project:
+The project compares vanilla DQN, DoubleDQN, momentum-sensitive reward shaping, and an anti-stall reward branch across multiple seeds. The plots below are generated from the saved CSV logs using [`hcr_dqn/generate_experiment_plots.py`](./hcr_dqn/generate_experiment_plots.py).
 
-- Original project: `alexzh3/hillclimbracing`
-- Original package name: `hill-climb-racing-env`
-- Original environment ID: `hill_racing_env/HillRacing-v0`
+### Learning Curves
 
-That original project provides:
+<p align="center">
+  <img src="./plots/plot_1_learning_curves_mean_episode_score.png" alt="Mean training episode score learning curves across DQN variants" width="780">
+</p>
 
-- the Box2D-based Hill Climb Racing simulator
-- Gymnasium environment registration
-- terrain generation
-- reward configurations
-- rendering and human play support
-- included PPO baseline assets and tests
+### Final Score Comparison
 
-This repository keeps that environment available locally, then builds new top-level DQN work around it instead of rewriting the simulator from scratch.
+<p align="center">
+  <img src="./plots/plot_2_final_score_comparison_bar_chart.png" alt="Final held-out score comparison across DQN variants" width="720">
+</p>
 
-## What Is New In This Repository
+### Final Score Distribution Across Seeds
 
-Compared with the original environment package, this repository adds project-level work focused on DQN experimentation and coursework-style reporting:
+<p align="center">
+  <img src="./plots/plot_6_final_evaluation_score_distribution_across_seeds.png" alt="Final score distribution across training seeds" width="780">
+</p>
 
-- `hcr_dqn/bootstrap.py`
-  Ensures the simulator package can be imported from the local repository layout.
+Current summary from [`plots/aggregate_final_evaluation_metrics.csv`](./plots/aggregate_final_evaluation_metrics.csv):
 
-- `hcr_dqn/env_wrappers.py`
-  Converts the environment's dictionary observation into a flat numeric vector suitable for an MLP-based DQN.
+| Method | Runs | Mean score | Score std | Mean return | Mean length | Takeaway |
+|---|---:|---:|---:|---:|---:|---|
+| Momentum DQN | 5 | 529.33 | 64.10 | 2322.02 | 2248.01 | Best current mean score and return |
+| Momentum Double | 5 | 516.55 | 58.04 | 2017.76 | 2380.01 | Most stable final score and longest episodes |
+| Vanilla Double | 5 | 482.42 | 121.38 | 1786.62 | 2202.62 | Improves over vanilla DQN |
+| Anti-stall DQN | 5 | 424.98 | 125.59 | 1738.90 | 1938.77 | Tested but discontinued |
+| Vanilla DQN | 5 | 410.03 | 125.32 | 1670.44 | 1912.07 | Baseline reference |
 
-- `hcr_dqn/replay_buffer.py`
-  Stores transition data for experience replay.
+## What This Repository Adds
 
-- `hcr_dqn/q_network.py`
-  Defines the Q-network used by the DQN agent.
+Compared with the original `hillclimbracing` environment package, this repository adds a DQN-focused research layer:
 
-- `hcr_dqn/dqn_agent.py`
-  Implements the main learning logic, action selection, target network updates, checkpoint save/load behavior, and the momentum-sensitive agent variation currently present in this repository.
+- [`hcr_dqn/q_network.py`](./hcr_dqn/q_network.py)
+  Defines the PyTorch Q-network used by the agents.
 
-- `hcr_dqn/train_dqn.py`
-  Runs end-to-end DQN training, logging, periodic evaluation, and checkpoint selection.
+- [`hcr_dqn/dqn_agent.py`](./hcr_dqn/dqn_agent.py)
+  Implements vanilla DQN learning, epsilon-greedy action selection, target-network updates, checkpoint save/load, the DoubleDQN target option, and reward-shaping variants.
 
-- `hcr_dqn/evaluate_dqn.py`
-  Evaluates trained agents on held-out seeds.
+- [`hcr_dqn/env_wrappers.py`](./hcr_dqn/env_wrappers.py)
+  Converts the environment's dictionary observation into a flat 7-value vector for the MLP.
 
-- `hcr_dqn/run_evaluation.py`
-  Provides an evaluation entry point for checkpoint-based reporting.
+- [`hcr_dqn/train_dqn.py`](./hcr_dqn/train_dqn.py)
+  Runs training, logging, validation evaluation, and best-checkpoint selection.
 
-- `hcr_dqn/watch_checkpoint.py`
-  Helps visually inspect trained checkpoints.
+- [`hcr_dqn/run_evaluation.py`](./hcr_dqn/run_evaluation.py)
+  Evaluates trained checkpoints on held-out seeds and writes final CSV results.
 
-- Top-level planning and experiment documents
-  Files such as [`HCR_DQN_Project_Plan.md`](./HCR_DQN_Project_Plan.md), [`PROJECT_PHASE_TRACKER.md`](./PROJECT_PHASE_TRACKER.md), [`EXPERIMENT_RESULTS_TRACKER.md`](./EXPERIMENT_RESULTS_TRACKER.md), and [`AI_HUMAN_WORK_DIVISION.md`](./AI_HUMAN_WORK_DIVISION.md) document the project direction, experiments, and ownership boundaries.
+- [`hcr_dqn/watch_checkpoint.py`](./hcr_dqn/watch_checkpoint.py)
+  Opens a rendered playback window for visually inspecting trained checkpoints.
 
-## Project Highlights
+- [`hcr_dqn/generate_experiment_plots.py`](./hcr_dqn/generate_experiment_plots.py)
+  Generates report-ready comparison plots from training and evaluation CSV files.
 
-- Uses a physics-based Hill Climb Racing environment backed by Box2D and Pygame
-- Treats the simulator as a reusable dependency instead of mixing all code into one package
-- Focuses on DQN-style value-based learning over the environment's discrete action space
-- Includes evaluation and checkpoint inspection tooling
-- Keeps research notes and experiment tracking in-repo
-- Preserves the original environment package, attribution, and licensing
+- Project documentation
+  [`AI_HUMAN_WORK_DIVISION.md`](./AI_HUMAN_WORK_DIVISION.md), [`PROJECT_PHASE_TRACKER.md`](./PROJECT_PHASE_TRACKER.md), and [`EXPERIMENT_RESULTS_TRACKER.md`](./EXPERIMENT_RESULTS_TRACKER.md) record ownership, methodology, experiment results, and reporting notes.
+
+## Project Design
+
+The repository keeps a clear boundary between the simulator and the DQN work:
+
+| Layer | Folder | Role |
+|---|---|---|
+| Environment | [`hillclimbracing`](./hillclimbracing) | Reused Gymnasium simulator, physics, terrain, rendering, and original reward/action definitions |
+| RL implementation | [`hcr_dqn`](./hcr_dqn) | DQN agents, Q-network, wrappers, training, evaluation, plots, and checkpoint tools |
+| Experiments | [`runs`](./runs), [`plots`](./plots) | Saved checkpoints, CSV logs, final evaluation metrics, and generated figures |
+| Documentation | Markdown files in the repo root | Project plan, result tracker, and AI/human work division |
+
+## Environment Facts Used By DQN
+
+The reused simulator registers this Gymnasium environment:
+
+```python
+"hill_racing_env/HillRacing-v0"
+```
+
+The current DQN setup uses:
+
+| Setting | Value |
+|---|---|
+| `action_space` | `discrete_3` |
+| `reward_function` | `distance` |
+| `reward_type` | `soft` |
+| `max_steps` | `1200` |
+| `original_noise` | `False` |
+
+The discrete actions are:
+
+| Action | Meaning |
+|---:|---|
+| `0` | Idle |
+| `1` | Gas |
+| `2` | Reverse |
+
+The original observation is a Gymnasium `Dict`. The DQN wrapper flattens it into:
+
+```text
+chassis_x,
+chassis_y,
+chassis_angle_deg,
+back_wheel_speed,
+front_wheel_speed,
+back_wheel_on_ground,
+front_wheel_on_ground
+```
 
 ## Repository Structure
 
@@ -88,17 +135,16 @@ Hill Climb Racing AI/
 ├── LICENSE
 ├── AI_HUMAN_WORK_DIVISION.md
 ├── EXPERIMENT_RESULTS_TRACKER.md
-├── HCR_DQN_Project_Plan.md
 ├── PROJECT_PHASE_TRACKER.md
-├── comprehensive_run_summaries.csv
+├── REPORT_DRAFT.md
 ├── quick_test.py
 ├── hcr_dqn/
-│   ├── __init__.py
 │   ├── bootstrap.py
 │   ├── configs.py
 │   ├── dqn_agent.py
 │   ├── env_wrappers.py
 │   ├── evaluate_dqn.py
+│   ├── generate_experiment_plots.py
 │   ├── q_network.py
 │   ├── replay_buffer.py
 │   ├── run_evaluation.py
@@ -110,59 +156,32 @@ Hill Climb Racing AI/
 │   ├── pyproject.toml
 │   ├── hill_racing_env/
 │   └── tests/
+├── plots/
 └── runs/
 ```
 
-## Environment Facts Used By The DQN Code
-
-The local simulator package exposes the Gymnasium environment:
-
-```python
-"hill_racing_env/HillRacing-v0"
-```
-
-The DQN code is built around the environment's discrete action setup:
-
-- `action_space="discrete_3"`
-- observation space is a `Dict`
-- the wrapper flattens the observation into:
-  `chassis_x, chassis_y, chassis_angle_deg, back_wheel_speed, front_wheel_speed, back_wheel_on_ground, front_wheel_on_ground`
-
-This is why the RL code lives outside the simulator package: the environment remains reusable, while the DQN layer can evolve independently.
-
 ## Setup
 
-This repository is easiest to run in a fresh Python 3.10 Conda environment.
+This project is easiest to run in a Python 3.10 Conda environment.
 
-### 1. Create and activate an environment
+### 1. Create and activate the environment
 
 ```bash
 conda create -n hcr python=3.10 -y
 conda activate hcr
 ```
 
-### 2. Install system prerequisites
-
-`box2d-py` commonly needs `swig` available at build time.
-
-Ubuntu or Debian:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y build-essential swig
-```
-
-### 3. Install Python dependencies
+### 2. Install the local simulator and DQN dependencies
 
 From the repository root:
 
 ```bash
 python -m pip install --upgrade pip setuptools wheel
-pip install -e ./hillclimbracing
-pip install torch pytest
+python -m pip install -e ./hillclimbracing
+python -m pip install torch pytest
 ```
 
-Core dependencies come from [`hillclimbracing/pyproject.toml`](./hillclimbracing/pyproject.toml):
+Core simulator dependencies come from [`hillclimbracing/pyproject.toml`](./hillclimbracing/pyproject.toml):
 
 - `gymnasium`
 - `pygame`
@@ -170,20 +189,26 @@ Core dependencies come from [`hillclimbracing/pyproject.toml`](./hillclimbracing
 - `numpy`
 - `noise`
 
-The DQN training code additionally requires:
+The DQN code additionally requires:
 
 - `torch`
 
-### 4. Headless server note
+If the `hill-climb-play` command exists but fails with `ModuleNotFoundError: No module named 'hill_racing_env'`, reinstall the local simulator inside the active environment:
 
-If you run this project over SSH on a headless Linux server, exporting dummy SDL drivers is often necessary before using `pygame`:
+```bash
+python -m pip install -e ./hillclimbracing
+```
+
+### 3. Headless server note
+
+If running through SSH or another headless Linux environment, set dummy SDL drivers before non-visual environment interaction:
 
 ```bash
 export SDL_VIDEODRIVER=dummy
 export SDL_AUDIODRIVER=dummy
 ```
 
-This is especially useful for testing and non-visual environment interaction. Human rendering usually requires a real display, X forwarding, or `xvfb`.
+Human rendering usually requires a real display, X forwarding, or `xvfb`.
 
 ## Quick Start
 
@@ -193,61 +218,65 @@ This is especially useful for testing and non-visual environment interaction. Hu
 python quick_test.py
 ```
 
-### Run DQN training
+### Play the original environment manually
 
-Training currently does not expose CLI flags. It uses the values stored in [`hcr_dqn/configs.py`](./hcr_dqn/configs.py), so edit `DQNConfig` there when you want to change the run name, seed, agent variant, reward settings, or other hyperparameters.
+```bash
+hill-climb-play
+```
+
+This command comes from the reused `hillclimbracing` package after it is installed with `pip install -e ./hillclimbracing`.
+
+### Train a DQN agent
+
+Training reads settings from [`hcr_dqn/configs.py`](./hcr_dqn/configs.py).
 
 ```bash
 python hcr_dqn/train_dqn.py
 ```
 
-### Evaluate a saved checkpoint
+Change these fields in `DQNConfig` to select an experiment:
+
+- `run_name`
+- `seed`
+- `agent_variant`
+- `td_target_mode`
+- `reward_function`
+- `reward_type`
+- `num_episodes`
+
+Use `agent_variant` for the reward/behavior style:
+
+- `vanilla`
+- `momentum_sensitive`
+- `antistall_momentum`
+
+Use `td_target_mode` for the target rule:
+
+- `dqn`
+- `double_dqn`
+
+For example:
+
+```python
+agent_variant = "momentum_sensitive"
+td_target_mode = "double_dqn"
+```
+
+This runs the momentum-sensitive reward with the DoubleDQN target calculation.
+
+### Evaluate a checkpoint
 
 ```bash
 python -m hcr_dqn.run_evaluation --run-name momentum_sensitive_dqn_seed7
 ```
 
-### Watch a checkpoint
+Useful variants:
 
 ```bash
-python -m hcr_dqn.watch_checkpoint --run-name momentum_sensitive_dqn_seed7
-```
-
-## Command-Line Interface
-
-The repository currently exposes CLI argument parsing for:
-
-- `python -m hcr_dqn.run_evaluation`
-- `python -m hcr_dqn.watch_checkpoint`
-
-The training entry point:
-
-- `python hcr_dqn/train_dqn.py`
-
-does not currently parse command-line arguments. It reads configuration directly from `DQNConfig` in [`hcr_dqn/configs.py`](./hcr_dqn/configs.py).
-
-### `run_evaluation`
-
-Use this command to evaluate a saved checkpoint and write summary CSV files.
-
-Example:
-
-```bash
-python -m hcr_dqn.run_evaluation --run-name momentum_sensitive_dqn_seed7
-```
-
-What it does:
-
-- loads the checkpoint for the requested run
-- evaluates the trained agent
-- prints aggregate metrics to the terminal
-- appends a summary CSV row
-- appends per-episode evaluation rows
-
-Default checkpoint path:
-
-```text
-runs/<run_name>/checkpoints/best_model.pt
+python -m hcr_dqn.run_evaluation --run-name momentum_sensitive_dqn_seed7 --mode validation
+python -m hcr_dqn.run_evaluation --run-name momentum_sensitive_dqn_seed7 --episodes 10
+python -m hcr_dqn.run_evaluation --checkpoint runs/momentum_sensitive_dqn_seed7/checkpoints/best_model.pt
+python -m hcr_dqn.run_evaluation --run-name momentum_sensitive_dqn_seed7 --output runs/momentum_sensitive_dqn_seed7/logs/final_eval_custom.csv
 ```
 
 Default output files:
@@ -257,74 +286,13 @@ runs/<run_name>/logs/evaluation_summaries.csv
 runs/<run_name>/logs/evaluation_episode_details.csv
 ```
 
-Supported arguments:
-
-- `--run-name <name>`
-  Run folder name under `runs/`. If omitted, the code falls back to `DQNConfig.run_name`.
-
-- `--checkpoint <path>`
-  Explicit path to a checkpoint file. Use this if you do not want the default `runs/<run_name>/checkpoints/best_model.pt` path.
-
-- `--mode {validation,final}`
-  Chooses the evaluation regime.
-  `validation` uses the smaller held-out validation setup.
-  `final` uses the larger final evaluation setup.
-  Default: `final`
-
-- `--episodes <int>`
-  Overrides the number of evaluation episodes. If omitted, the script uses the count configured for the chosen mode.
-
-- `--seed-start <int>`
-  Overrides the first seed used for final evaluation. The help text notes that this is ignored in validation mode.
-
-- `--output <path>`
-  Custom CSV path for the summary file.
-
-Useful examples:
-
-```bash
-python -m hcr_dqn.run_evaluation --run-name momentum_sensitive_dqn_seed7 --mode validation
-python -m hcr_dqn.run_evaluation --run-name momentum_sensitive_dqn_seed7 --episodes 10
-python -m hcr_dqn.run_evaluation --checkpoint runs/momentum_sensitive_dqn_seed7/checkpoints/best_model.pt
-python -m hcr_dqn.run_evaluation --run-name momentum_sensitive_dqn_seed7 --output runs/momentum_sensitive_dqn_seed7/logs/final_eval_custom.csv
-```
-
-### `watch_checkpoint`
-
-Use this command to open a rendered window and watch a trained checkpoint play greedily.
-
-Example:
+### Watch a trained checkpoint
 
 ```bash
 python -m hcr_dqn.watch_checkpoint --run-name momentum_sensitive_dqn_seed7
 ```
 
-Default checkpoint path:
-
-```text
-runs/<run_name>/checkpoints/best_model.pt
-```
-
-Supported arguments:
-
-- `--run-name <name>`
-  Run folder name under `runs/`. If omitted, the script falls back to `DQNConfig.run_name`.
-
-- `--checkpoint <path>`
-  Explicit checkpoint file path.
-
-- `--episodes <int>`
-  Number of rendered episodes to watch.
-  Default: `3`
-
-- `--seed <int>`
-  Base seed for the rendered episodes. If omitted, the script uses `DQNConfig.seed`.
-
-- `--step-delay <float>`
-  Extra seconds to sleep after each environment step so playback is easier to watch.
-  Default: `0.02`
-
-Useful examples:
+Useful variants:
 
 ```bash
 python -m hcr_dqn.watch_checkpoint --run-name momentum_sensitive_dqn_seed7 --episodes 1
@@ -333,73 +301,61 @@ python -m hcr_dqn.watch_checkpoint --run-name momentum_sensitive_dqn_seed7 --ste
 python -m hcr_dqn.watch_checkpoint --checkpoint runs/momentum_sensitive_dqn_seed7/checkpoints/best_model.pt
 ```
 
-### `train_dqn`
-
-Training currently works as a script entry point, not a parsed CLI.
-
-Run it with:
+### Regenerate experiment plots
 
 ```bash
-python hcr_dqn/train_dqn.py
+python -m hcr_dqn.generate_experiment_plots
 ```
 
-To change behavior, edit the fields in [`hcr_dqn/configs.py`](./hcr_dqn/configs.py), especially:
+Generated figures and aggregate CSV files are written to [`plots`](./plots).
 
-- `run_name`
-- `agent_variant`
-- `td_target_mode`
-- `seed`
-- `reward_function`
-- `reward_type`
-- `action_space`
-- `num_episodes`
-- `evaluation_frequency`
+## Experiment Methods
 
-Use `agent_variant` only for the reward/behavior style:
+| Method | Main idea | Implementation |
+|---|---|---|
+| `vanilla_dqn` | Baseline DQN with target network and replay buffer | `DQNAgent` |
+| `momentum_sensitive_dqn` | Adds reward shaping for forward momentum and stability | `MomentumSensitiveDQNAgent` |
+| `vanilla_double_dqn` | Uses DoubleDQN target selection/evaluation split | `td_target_mode = "double_dqn"` |
+| `momentum_sensitive_double_dqn` | Combines momentum reward shaping with DoubleDQN targets | `agent_variant = "momentum_sensitive"`, `td_target_mode = "double_dqn"` |
+| `antistall_momentum_dqn` | Tests an explicit stuck-recovery reward penalty | `AntiStallMomentumDQNAgent` |
 
-- `vanilla`
-- `momentum_sensitive`
-- `antistall_momentum`
-
-Use `td_target_mode` only for the Bellman target rule:
-
-- `dqn`
-- `double_dqn`
-
-For example, `agent_variant = "momentum_sensitive"` with `td_target_mode = "double_dqn"` gives the momentum-sensitive reward with the DoubleDQN target update.
-
-If you want fully scriptable experiment runs later, a natural next improvement would be to add an `argparse` interface to `train_dqn.py` so run names, seeds, and reward settings can be changed from the command line.
+The current result tracker treats `antistall_momentum_dqn` as a completed but discontinued branch because it did not improve the previous momentum-based methods.
 
 ## Training Outputs
 
-Training artifacts are written under [`runs`](./runs). A run typically contains:
+Each run writes artifacts under:
 
-- checkpoints
-- CSV logs
-- evaluation summaries
-- plots or later analysis outputs
+```text
+runs/<run_name>/
+```
 
-The configuration object in [`hcr_dqn/configs.py`](./hcr_dqn/configs.py) controls run naming, output paths, environment settings, and core DQN hyperparameters.
+Typical files:
+
+- `checkpoints/best_model.pt`
+- `logs/training_metrics.csv`
+- `logs/validation_metrics.csv`
+- `logs/evaluation_summaries.csv`
+- `logs/evaluation_episode_details.csv`
+
+The root [`plots`](./plots) folder stores cross-run comparison outputs generated from those logs.
 
 ## Documentation Files
 
-This repository includes project-management and reporting artifacts alongside the code:
-
-- [`HCR_DQN_Project_Plan.md`](./HCR_DQN_Project_Plan.md)
-  Repository-grounded project framing and implementation roadmap.
+- [`AI_HUMAN_WORK_DIVISION.md`](./AI_HUMAN_WORK_DIVISION.md)
+  Records reused code, AI-assisted tooling, and human-owned implementation work.
 
 - [`PROJECT_PHASE_TRACKER.md`](./PROJECT_PHASE_TRACKER.md)
-  Ongoing progress and structure notes.
+  Tracks project phases, protocol notes, and code understanding.
 
 - [`EXPERIMENT_RESULTS_TRACKER.md`](./EXPERIMENT_RESULTS_TRACKER.md)
-  Seed-level experiment tracking, metric interpretation, and result summaries.
+  Records experiment numbers, seed-level notes, plot interpretation, and final comparison summaries.
 
-- [`AI_HUMAN_WORK_DIVISION.md`](./AI_HUMAN_WORK_DIVISION.md)
-  Ownership notes describing reused code, AI-assisted scaffolding, and human-authored algorithm work.
+- [`REPORT_DRAFT.md`](./REPORT_DRAFT.md)
+  Draft report material.
 
 ## Acknowledgement
 
-This repository directly acknowledges and builds upon the original `hillclimbracing` environment project.
+This repository directly acknowledges and builds on the original `hillclimbracing` environment project.
 
 Credit is due to:
 
@@ -410,23 +366,9 @@ Credit is due to:
 - Box2D for the physics engine
 - Pygame for rendering and interaction support
 
-The original environment remains an important part of this repository and is not being presented as newly authored from scratch here. The top-level DQN code, experiment structure, and project documents are additions built around that reused simulator.
-
-## Modification Notice
-
-This repository contains original and modified material beyond the upstream `hillclimbracing` package, including:
-
-- a separate DQN package under `hcr_dqn`
-- local repository integration helpers
-- experiment runners and evaluation scripts
-- new project-level documentation
-- experiment tracking artifacts and run outputs
-
-These additions make the repository a combined derivative work built on top of GPL-licensed source material.
+The original environment remains an important part of this repository and is not presented as newly authored from scratch here. The top-level DQN code, experiment structure, generated plots, and project documents are additions built around that reused simulator.
 
 ## License
-
-### Summary
 
 The original `hillclimbracing` package included in this repository is licensed under the GNU General Public License v3.0 only.
 
@@ -438,24 +380,12 @@ That means:
 - the new top-level DQN code and repository-level additions are also distributed under GPL-3.0-only in this combined repository
 - redistribution of this combined repository should preserve the GPL license text and the original attribution notices
 
-### Full License Text
-
-The full GNU GPL v3 license text is provided in:
+Full license text is provided in:
 
 - [`LICENSE`](./LICENSE)
 - [`hillclimbracing/LICENSE`](./hillclimbracing/LICENSE)
 
-The root `LICENSE` file is included so the combined repository clearly carries the governing license at the top level, while the original copy from the vendored project is preserved in place.
-
-### Practical License Interpretation For This Repository
-
-For this repository as currently organized:
-
-- if you share the repository, share the source code and retain the GPL notice
-- if you modify files and redistribute them, mark the modified version clearly
-- if you reuse the combined codebase, keep the same GPL licensing obligations in mind
-
-This README is an informational project summary and not legal advice. When in doubt, consult the full GPL text.
+This README is an informational project summary and not legal advice.
 
 ## Original Source References
 

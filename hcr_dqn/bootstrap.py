@@ -1,4 +1,4 @@
-"""Runtime helpers for keeping the RL code separate from the simulator code.
+"""AI work: Runtime helpers for keeping the RL code separate from the simulator code.
 
 There are two reasonable ways this project can be run:
 

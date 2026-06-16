@@ -1,4 +1,4 @@
-"""Replay buffer implementation for DQN.
+"""AI work: Replay buffer implementation for DQN.
 
 The replay buffer is where we store past transitions so the agent can learn
 from shuffled experience instead of only the most recent few frames.

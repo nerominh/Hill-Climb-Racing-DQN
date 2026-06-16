@@ -1,8 +1,8 @@
-"""Phase 1 training script for vanilla DQN on Hill Climb Racing.
-
-This script is intentionally written as a readable baseline instead of a
-framework. The goal is that you can step through it line by line and still
-understand the whole training story.
+""" AI work
+Full online training loop for DQN agents, with logging and checkpointing. 
+This is the main entry point for training a DQN agent on the HCR environment. 
+It handles the interaction loop, logging of training metrics, periodic evaluation, and saving of checkpoints. 
+The training configuration can be easily adjusted via the DQNConfig dataclass in configs.py, and different agent variants can be selected with the agent_variant setting.
 """
 
 from __future__ import annotations
