@@ -18,7 +18,6 @@ try:
     import torch
     from torch import nn # Importing the neural network module from PyTorch --> Building blocks for constructing the Q-network architecture
 except ModuleNotFoundError as exc:  
-    # For convenience, I implement this exception to catch the error and print a more helpful message about installing PyTorch
     raise ModuleNotFoundError(
         "No PyTorch :<. PyTorch is required for the DQN scaffold. Install torch in the "
         "project environment before training or evaluation."
@@ -42,7 +41,7 @@ def load_checkpoint_payload(path, device):
 
 
 class DQNAgent:
-    # The constructor initializes the online and target Q-networks, the optimizer, the loss function, and the epsilon value for exploration
+    # Initializes the online and target Q-networks, the optimizer, the loss function, and the epsilon value for exploration
     def __init__(self, state_dim: int, action_dim: int, config):
         self.state_dim = state_dim
         self.action_dim = action_dim
@@ -187,7 +186,7 @@ class DQNAgent:
 
 
 # My variation: Momentum-Sensitive DQN
-# This keeps the normal DQN network and Bellman update, but changes the reward stored in replay memory so the agent is encouraged to move forward smoothly
+# Keeps the normal DQN network and Bellman update, but changes the reward stored in replay memory so the agent is encouraged to move forward smoothly
 class MomentumSensitiveDQNAgent(DQNAgent):
     # Vanilla DQN with a small custom reward shaping rule for stable motion
 
@@ -248,8 +247,7 @@ class MomentumSensitiveDQNAgent(DQNAgent):
         else:
             progress_delta = current_score - self.previous_score
 
-        # The flattened observation order comes from env_wrappers.py:
-        # 0=x position, 2=chassis angle, 5=back wheel on ground, 6=front wheel on ground
+        # Flattened observation order comes from env_wrappers.py: 0=x position, 2=chassis angle, 5=back wheel on ground, 6=front wheel on ground
         x_delta = 0.0
         chassis_angle = 0.0
         back_wheel_on_ground = 1.0
